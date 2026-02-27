@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	fitnotes "fit-analyzer"
 	"github.com/tormoder/fit"
 )
 
@@ -49,23 +50,54 @@ func ExportFile(inputPath, outputDir string, opts ExportOptions) (*ExportResult,
 		return nil, fmt.Errorf("write records.jsonl: %w", err)
 	}
 
+	analysisPath := ""
+	workoutStructurePath := ""
+	analysisError := ""
+	if opts.IncludeAnalysis {
+		analysis, err := fitnotes.AnalyzeFile(inputPath, fitnotes.Config{FTPWatts: opts.FTPWatts})
+		if err != nil {
+			analysisError = err.Error()
+		} else {
+			analysisPath = filepath.Join(outputDir, "analysis.json")
+			if err := writeJSON(analysisPath, analysis); err != nil {
+				return nil, fmt.Errorf("write analysis.json: %w", err)
+			}
+			workoutStructurePath = filepath.Join(outputDir, "workout_structure.json")
+			if err := writeJSON(workoutStructurePath, analysis.WorkoutStructure); err != nil {
+				return nil, fmt.Errorf("write workout_structure.json: %w", err)
+			}
+		}
+	}
+
 	fileID := projectFileID(inputPath)
+	analysisPathName := ""
+	if analysisPath != "" {
+		analysisPathName = filepath.Base(analysisPath)
+	}
+	workoutStructurePathName := ""
+	if workoutStructurePath != "" {
+		workoutStructurePathName = filepath.Base(workoutStructurePath)
+	}
+
 	manifest := Manifest{
-		FormatVersion:    ExportFormatVersion,
-		GeneratedAt:      time.Now().UTC(),
-		SourceFile:       inputPath,
-		SourceFileName:   filepath.Base(inputPath),
-		SourceSHA256:     sha,
-		SourceSizeBytes:  int64(len(data)),
-		Header:           parsed.Header,
-		HeaderCRC:        parsed.HeaderCRC,
-		FileCRC:          parsed.FileCRC,
-		RecordsPath:      filepath.Base(recordsPath),
-		RecordCount:      len(parsed.Records),
-		DefinitionCount:  parsed.DefinitionCount,
-		DataMessageCount: parsed.DataMessageCount,
-		LeftoverBytes:    parsed.LeftoverBytesCount,
-		FileIdProjection: fileID,
+		FormatVersion:        ExportFormatVersion,
+		GeneratedAt:          time.Now().UTC(),
+		SourceFile:           inputPath,
+		SourceFileName:       filepath.Base(inputPath),
+		SourceSHA256:         sha,
+		SourceSizeBytes:      int64(len(data)),
+		Header:               parsed.Header,
+		HeaderCRC:            parsed.HeaderCRC,
+		FileCRC:              parsed.FileCRC,
+		RecordsPath:          filepath.Base(recordsPath),
+		AnalysisPath:         analysisPathName,
+		WorkoutStructurePath: workoutStructurePathName,
+		AnalysisError:        analysisError,
+		RecordCount:          len(parsed.Records),
+		DefinitionCount:      parsed.DefinitionCount,
+		DataMessageCount:     parsed.DataMessageCount,
+		LeftoverBytes:        parsed.LeftoverBytesCount,
+		FileIdProjection:     fileID,
 		SchemaDescription: SchemaDetails{
 			RecordType: "JSONL line-per-FIT-record preserving original order and byte offsets",
 			Notes: []string{
@@ -74,6 +106,7 @@ func ExportFile(inputPath, outputDir string, opts ExportOptions) (*ExportResult,
 				"Developer data fields are preserved as raw bytes.",
 				"Definition messages are preserved so unknown/global custom messages remain interpretable.",
 				"Use record_index and file_offset for deterministic chunking in LLM pipelines.",
+				"analysis.json and workout_structure.json provide semantic block labels for LLM reasoning.",
 			},
 		},
 	}
@@ -92,18 +125,21 @@ func ExportFile(inputPath, outputDir string, opts ExportOptions) (*ExportResult,
 	}
 
 	return &ExportResult{
-		OutputDir:         outputDir,
-		ManifestPath:      manifestPath,
-		RecordsPath:       recordsPath,
-		SourceCopyPath:    sourceCopyPath,
-		RecordCount:       len(parsed.Records),
-		DefinitionCount:   parsed.DefinitionCount,
-		DataMessageCount:  parsed.DataMessageCount,
-		SourceSHA256:      sha,
-		SourceSizeBytes:   int64(len(data)),
-		FileCRCValid:      parsed.FileCRC.Valid,
-		HeaderCRCValid:    parsed.HeaderCRC.Valid,
-		ChainedDataRemain: parsed.LeftoverBytesCount,
+		OutputDir:            outputDir,
+		ManifestPath:         manifestPath,
+		RecordsPath:          recordsPath,
+		AnalysisPath:         analysisPath,
+		WorkoutStructurePath: workoutStructurePath,
+		AnalysisError:        analysisError,
+		SourceCopyPath:       sourceCopyPath,
+		RecordCount:          len(parsed.Records),
+		DefinitionCount:      parsed.DefinitionCount,
+		DataMessageCount:     parsed.DataMessageCount,
+		SourceSHA256:         sha,
+		SourceSizeBytes:      int64(len(data)),
+		FileCRCValid:         parsed.FileCRC.Valid,
+		HeaderCRCValid:       parsed.HeaderCRC.Valid,
+		ChainedDataRemain:    parsed.LeftoverBytesCount,
 	}, nil
 }
 

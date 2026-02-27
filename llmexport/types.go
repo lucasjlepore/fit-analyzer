@@ -14,42 +14,54 @@ type ExportOptions struct {
 
 	// CopySourceFile writes a byte-for-byte copy of the source FIT file to the output directory.
 	CopySourceFile bool
+
+	// FTPWatts is passed to the semantic analyzer when IncludeAnalysis is enabled.
+	FTPWatts float64
+
+	// IncludeAnalysis writes LLM-friendly semantic summary files (analysis.json + workout_structure.json).
+	IncludeAnalysis bool
 }
 
 // ExportResult describes generated files.
 type ExportResult struct {
-	OutputDir         string `json:"output_dir"`
-	ManifestPath      string `json:"manifest_path"`
-	RecordsPath       string `json:"records_path"`
-	SourceCopyPath    string `json:"source_copy_path,omitempty"`
-	RecordCount       int    `json:"record_count"`
-	DefinitionCount   int    `json:"definition_count"`
-	DataMessageCount  int    `json:"data_message_count"`
-	SourceSHA256      string `json:"source_sha256"`
-	SourceSizeBytes   int64  `json:"source_size_bytes"`
-	FileCRCValid      bool   `json:"file_crc_valid"`
-	HeaderCRCValid    bool   `json:"header_crc_valid"`
-	ChainedDataRemain int64  `json:"chained_data_remain"`
+	OutputDir            string `json:"output_dir"`
+	ManifestPath         string `json:"manifest_path"`
+	RecordsPath          string `json:"records_path"`
+	AnalysisPath         string `json:"analysis_path,omitempty"`
+	WorkoutStructurePath string `json:"workout_structure_path,omitempty"`
+	AnalysisError        string `json:"analysis_error,omitempty"`
+	SourceCopyPath       string `json:"source_copy_path,omitempty"`
+	RecordCount          int    `json:"record_count"`
+	DefinitionCount      int    `json:"definition_count"`
+	DataMessageCount     int    `json:"data_message_count"`
+	SourceSHA256         string `json:"source_sha256"`
+	SourceSizeBytes      int64  `json:"source_size_bytes"`
+	FileCRCValid         bool   `json:"file_crc_valid"`
+	HeaderCRCValid       bool   `json:"header_crc_valid"`
+	ChainedDataRemain    int64  `json:"chained_data_remain"`
 }
 
 // Manifest captures export metadata and pointers to exported files.
 type Manifest struct {
-	FormatVersion     string        `json:"format_version"`
-	GeneratedAt       time.Time     `json:"generated_at"`
-	SourceFile        string        `json:"source_file"`
-	SourceFileName    string        `json:"source_file_name"`
-	SourceSHA256      string        `json:"source_sha256"`
-	SourceSizeBytes   int64         `json:"source_size_bytes"`
-	Header            HeaderInfo    `json:"header"`
-	HeaderCRC         CRCCheck      `json:"header_crc"`
-	FileCRC           CRCCheck      `json:"file_crc"`
-	RecordsPath       string        `json:"records_path"`
-	RecordCount       int           `json:"record_count"`
-	DefinitionCount   int           `json:"definition_count"`
-	DataMessageCount  int           `json:"data_message_count"`
-	LeftoverBytes     int64         `json:"leftover_bytes"`
-	FileIdProjection  *FileIDInfo   `json:"file_id_projection,omitempty"`
-	SchemaDescription SchemaDetails `json:"schema_description"`
+	FormatVersion        string        `json:"format_version"`
+	GeneratedAt          time.Time     `json:"generated_at"`
+	SourceFile           string        `json:"source_file"`
+	SourceFileName       string        `json:"source_file_name"`
+	SourceSHA256         string        `json:"source_sha256"`
+	SourceSizeBytes      int64         `json:"source_size_bytes"`
+	Header               HeaderInfo    `json:"header"`
+	HeaderCRC            CRCCheck      `json:"header_crc"`
+	FileCRC              CRCCheck      `json:"file_crc"`
+	RecordsPath          string        `json:"records_path"`
+	AnalysisPath         string        `json:"analysis_path,omitempty"`
+	WorkoutStructurePath string        `json:"workout_structure_path,omitempty"`
+	AnalysisError        string        `json:"analysis_error,omitempty"`
+	RecordCount          int           `json:"record_count"`
+	DefinitionCount      int           `json:"definition_count"`
+	DataMessageCount     int           `json:"data_message_count"`
+	LeftoverBytes        int64         `json:"leftover_bytes"`
+	FileIdProjection     *FileIDInfo   `json:"file_id_projection,omitempty"`
+	SchemaDescription    SchemaDetails `json:"schema_description"`
 }
 
 // SchemaDetails documents the record shape for downstream applications.
@@ -113,9 +125,12 @@ type DefinitionRecord struct {
 // FieldDefinition captures a standard field definition.
 type FieldDefinition struct {
 	FieldNumber   uint8        `json:"field_number"`
+	FieldName     string       `json:"field_name,omitempty"`
 	Size          uint8        `json:"size"`
 	BaseTypeRaw   uint8        `json:"base_type_raw"`
 	BaseType      BaseTypeInfo `json:"base_type"`
+	Units         string       `json:"units,omitempty"`
+	InvalidRule   string       `json:"invalid_rule,omitempty"`
 	RawDefinition string       `json:"raw_definition_hex"`
 }
 
@@ -140,8 +155,26 @@ type BaseTypeInfo struct {
 // DataRecord captures a FIT data message.
 type DataRecord struct {
 	CompressedTimestamp *CompressedTimestampInfo `json:"compressed_timestamp,omitempty"`
+	Flat                *RecordFlat              `json:"flat,omitempty"`
 	Fields              []FieldValue             `json:"fields"`
 	DeveloperFields     []DeveloperFieldValue    `json:"developer_fields,omitempty"`
+}
+
+// RecordFlat is a semantic fast-path for FIT record messages (global message 20).
+type RecordFlat struct {
+	TimestampRaw uint32   `json:"timestamp_raw,omitempty"`
+	TimestampUTC string   `json:"timestamp_utc,omitempty"`
+	PowerW       *float64 `json:"power_w,omitempty"`
+	HRBPM        *float64 `json:"hr_bpm,omitempty"`
+	CadenceRPM   *float64 `json:"cadence_rpm,omitempty"`
+	SpeedMPS     *float64 `json:"speed_mps,omitempty"`
+	DistanceM    *float64 `json:"distance_m,omitempty"`
+	AltitudeM    *float64 `json:"altitude_m,omitempty"`
+	TemperatureC *float64 `json:"temperature_c,omitempty"`
+	GradePct     *float64 `json:"grade_pct,omitempty"`
+	ValidPower   bool     `json:"valid_power"`
+	ValidHR      bool     `json:"valid_hr"`
+	ValidCadence bool     `json:"valid_cadence"`
 }
 
 // CompressedTimestampInfo includes reconstructed timestamp state for compressed headers.
@@ -156,11 +189,15 @@ type CompressedTimestampInfo struct {
 type FieldValue struct {
 	FieldIndex      int             `json:"field_index"`
 	FieldNumber     uint8           `json:"field_number"`
+	FieldName       string          `json:"field_name,omitempty"`
 	Size            uint8           `json:"size"`
 	BaseTypeRaw     uint8           `json:"base_type_raw"`
 	BaseType        BaseTypeInfo    `json:"base_type"`
+	Units           string          `json:"units,omitempty"`
+	InvalidRule     string          `json:"invalid_rule,omitempty"`
 	RawHex          string          `json:"raw_hex"`
 	Decoded         any             `json:"decoded"`
+	Scaled          any             `json:"scaled,omitempty"`
 	DecodedType     string          `json:"decoded_type"`
 	IsArray         bool            `json:"is_array"`
 	Invalid         bool            `json:"invalid"`

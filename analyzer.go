@@ -21,38 +21,39 @@ type Config struct {
 
 // Analysis contains extracted metrics and generated notes for a FIT activity.
 type Analysis struct {
-	FilePath          string          `json:"file_path"`
-	Sport             string          `json:"sport"`
-	SubSport          string          `json:"sub_sport"`
-	StartTime         time.Time       `json:"start_time"`
-	EndTime           time.Time       `json:"end_time"`
-	ElapsedSeconds    float64         `json:"elapsed_seconds"`
-	MovingSeconds     float64         `json:"moving_seconds"`
-	DistanceMeters    float64         `json:"distance_meters"`
-	ElevationGainM    float64         `json:"elevation_gain_m"`
-	ElevationLossM    float64         `json:"elevation_loss_m"`
-	Calories          int             `json:"calories"`
-	AvgSpeedMps       float64         `json:"avg_speed_mps"`
-	MaxSpeedMps       float64         `json:"max_speed_mps"`
-	AvgPowerWatts     float64         `json:"avg_power_watts"`
-	MaxPowerWatts     float64         `json:"max_power_watts"`
-	NormalizedPower   float64         `json:"normalized_power_watts"`
-	VariabilityIndex  float64         `json:"variability_index"`
-	WorkKilojoules    float64         `json:"work_kilojoules"`
-	AvgHeartRate      float64         `json:"avg_heart_rate_bpm"`
-	MaxHeartRate      float64         `json:"max_heart_rate_bpm"`
-	AvgCadence        float64         `json:"avg_cadence_rpm"`
-	MaxCadence        float64         `json:"max_cadence_rpm"`
-	FTPWatts          float64         `json:"ftp_watts"`
-	FTPSource         string          `json:"ftp_source"`
-	IntensityFactor   float64         `json:"intensity_factor"`
-	TrainingStress    float64         `json:"training_stress_score"`
-	Best20MinPower    float64         `json:"best_20min_power_watts"`
-	PowerHRDecoupling float64         `json:"power_hr_decoupling_pct"`
-	PowerZones        []ZoneDuration  `json:"power_zones,omitempty"`
-	Laps              []LapSummary    `json:"laps,omitempty"`
-	Intervals         IntervalSummary `json:"intervals"`
-	Notes             string          `json:"notes"`
+	FilePath          string           `json:"file_path"`
+	Sport             string           `json:"sport"`
+	SubSport          string           `json:"sub_sport"`
+	StartTime         time.Time        `json:"start_time"`
+	EndTime           time.Time        `json:"end_time"`
+	ElapsedSeconds    float64          `json:"elapsed_seconds"`
+	MovingSeconds     float64          `json:"moving_seconds"`
+	DistanceMeters    float64          `json:"distance_meters"`
+	ElevationGainM    float64          `json:"elevation_gain_m"`
+	ElevationLossM    float64          `json:"elevation_loss_m"`
+	Calories          int              `json:"calories"`
+	AvgSpeedMps       float64          `json:"avg_speed_mps"`
+	MaxSpeedMps       float64          `json:"max_speed_mps"`
+	AvgPowerWatts     float64          `json:"avg_power_watts"`
+	MaxPowerWatts     float64          `json:"max_power_watts"`
+	NormalizedPower   float64          `json:"normalized_power_watts"`
+	VariabilityIndex  float64          `json:"variability_index"`
+	WorkKilojoules    float64          `json:"work_kilojoules"`
+	AvgHeartRate      float64          `json:"avg_heart_rate_bpm"`
+	MaxHeartRate      float64          `json:"max_heart_rate_bpm"`
+	AvgCadence        float64          `json:"avg_cadence_rpm"`
+	MaxCadence        float64          `json:"max_cadence_rpm"`
+	FTPWatts          float64          `json:"ftp_watts"`
+	FTPSource         string           `json:"ftp_source"`
+	IntensityFactor   float64          `json:"intensity_factor"`
+	TrainingStress    float64          `json:"training_stress_score"`
+	Best20MinPower    float64          `json:"best_20min_power_watts"`
+	PowerHRDecoupling float64          `json:"power_hr_decoupling_pct"`
+	PowerZones        []ZoneDuration   `json:"power_zones,omitempty"`
+	Laps              []LapSummary     `json:"laps,omitempty"`
+	Intervals         IntervalSummary  `json:"intervals"`
+	WorkoutStructure  WorkoutStructure `json:"workout_structure"`
+	Notes             string           `json:"notes"`
 }
 
 // ZoneDuration stores duration spent in a given FTP-based power zone.
@@ -66,14 +67,16 @@ type ZoneDuration struct {
 
 // LapSummary is a compact lap-level view for interval and pacing analysis.
 type LapSummary struct {
-	Index           int     `json:"index"`
-	DurationSeconds float64 `json:"duration_seconds"`
-	DistanceMeters  float64 `json:"distance_meters"`
-	AvgPowerWatts   float64 `json:"avg_power_watts"`
-	MaxPowerWatts   float64 `json:"max_power_watts"`
-	AvgHeartRate    float64 `json:"avg_heart_rate_bpm"`
-	AvgCadence      float64 `json:"avg_cadence_rpm"`
-	Label           string  `json:"label"`
+	Index              int     `json:"index"`
+	StartOffsetSeconds float64 `json:"start_offset_seconds"`
+	EndOffsetSeconds   float64 `json:"end_offset_seconds"`
+	DurationSeconds    float64 `json:"duration_seconds"`
+	DistanceMeters     float64 `json:"distance_meters"`
+	AvgPowerWatts      float64 `json:"avg_power_watts"`
+	MaxPowerWatts      float64 `json:"max_power_watts"`
+	AvgHeartRate       float64 `json:"avg_heart_rate_bpm"`
+	AvgCadence         float64 `json:"avg_cadence_rpm"`
+	Label              string  `json:"label"`
 }
 
 // IntervalSummary captures the detected interval structure of the workout.
@@ -248,6 +251,7 @@ func AnalyzeFile(path string, cfg Config) (*Analysis, error) {
 	analysis.PowerHRDecoupling = powerHRDecoupling(series.pairedPower, series.pairedHR)
 	analysis.PowerZones = buildPowerZones(series.powerForNP, analysis.FTPWatts)
 	analysis.Laps, analysis.Intervals = summarizeLaps(activity.Laps, analysis.AvgPowerWatts)
+	analysis.WorkoutStructure = InferWorkoutStructure(analysis.Laps, analysis.FTPWatts, analysis.Intervals)
 	analysis.Notes = BuildTrainingNotes(analysis)
 
 	return analysis, nil
@@ -370,6 +374,7 @@ func summarizeLaps(laps []*fit.LapMsg, sessionAvgPower float64) ([]LapSummary, I
 
 	summaries := make([]LapSummary, 0, len(laps))
 	lapPowers := make([]float64, 0, len(laps))
+	offset := 0.0
 	for idx, lap := range laps {
 		if lap == nil {
 			continue
@@ -385,15 +390,18 @@ func summarizeLaps(laps []*fit.LapMsg, sessionAvgPower float64) ([]LapSummary, I
 		}
 
 		summaries = append(summaries, LapSummary{
-			Index:           idx + 1,
-			DurationSeconds: duration,
-			DistanceMeters:  safePositive(lap.GetTotalDistanceScaled()),
-			AvgPowerWatts:   avgPower,
-			MaxPowerWatts:   float64(validUint16(lap.MaxPower)),
-			AvgHeartRate:    float64(validUint8(lap.AvgHeartRate)),
-			AvgCadence:      cadenceFromAny(lap.GetAvgCadence()),
-			Label:           "steady",
+			Index:              idx + 1,
+			StartOffsetSeconds: offset,
+			EndOffsetSeconds:   offset + duration,
+			DurationSeconds:    duration,
+			DistanceMeters:     safePositive(lap.GetTotalDistanceScaled()),
+			AvgPowerWatts:      avgPower,
+			MaxPowerWatts:      float64(validUint16(lap.MaxPower)),
+			AvgHeartRate:       float64(validUint8(lap.AvgHeartRate)),
+			AvgCadence:         cadenceFromAny(lap.GetAvgCadence()),
+			Label:              "steady",
 		})
+		offset += duration
 	}
 	if len(summaries) == 0 {
 		return summaries, IntervalSummary{}

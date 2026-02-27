@@ -1,9 +1,9 @@
 # fit-analyzer
 
-Small Go libraries + CLIs for:
 
 - analyzing `.fit` workout files and generating training notes
 - exporting FIT files losslessly to an LLM-friendly format
+- producing structured artifacts for deterministic LLM analysis
 
 ## Features
 
@@ -30,6 +30,8 @@ Lossless export bundle output:
 
 - `manifest.json`: metadata, checksums, schema version, and pointers.
 - `records.jsonl`: every FIT definition/data record with raw hex + decoded values.
+- `analysis.json`: session metrics and inferred interval labels.
+- `workout_structure.json`: explicit block-level workout structure for LLM reasoning.
 - `source.fit` (optional): source copy for provenance.
 
 Schema version: `fit_llm_jsonl_v1`
@@ -51,7 +53,22 @@ Lossless LLM export:
 
 ```bash
 go run ./cmd/fitllmexport --out-dir ./exports/my-workout /path/to/workout.fit
+go run ./cmd/fitllmexport --ftp 223 --out-dir ./exports/my-workout /path/to/workout.fit
 ```
+
+Deterministic analyzer pipeline:
+
+```bash
+go run ./cmd/fit_analyze --fit /path/to/workout.fit --out ./outputs/workout --ftp 223 --format parquet
+```
+
+`fit_analyze` outputs (additive to lossless JSONL):
+
+- `canonical_samples.parquet` (or `.csv`)
+- `messages_index.json`
+- `workout_structure.json`
+- `lap_summary.json` (if laps exist)
+- `activity_summary.json`
 
 ## Library API
 

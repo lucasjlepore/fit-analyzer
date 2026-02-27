@@ -12,9 +12,11 @@ import (
 
 func main() {
 	var (
-		outDir     = flag.String("out-dir", "", "Output directory for manifest.json and records.jsonl")
-		overwrite  = flag.Bool("overwrite", true, "Allow writing to non-empty output directories")
-		copySource = flag.Bool("copy-source", true, "Copy original FIT file into export directory as source.fit")
+		outDir       = flag.String("out-dir", "", "Output directory for manifest.json and records.jsonl")
+		overwrite    = flag.Bool("overwrite", true, "Allow writing to non-empty output directories")
+		copySource   = flag.Bool("copy-source", true, "Copy original FIT file into export directory as source.fit")
+		ftp          = flag.Float64("ftp", 0, "FTP in watts used for semantic structure labels in analysis.json")
+		withAnalysis = flag.Bool("with-analysis", true, "Write analysis.json and workout_structure.json for LLM-friendly semantic labeling")
 	)
 
 	flag.Usage = func() {
@@ -35,8 +37,10 @@ func main() {
 	}
 
 	result, err := llmexport.ExportFile(inputPath, *outDir, llmexport.ExportOptions{
-		Overwrite:      *overwrite,
-		CopySourceFile: *copySource,
+		Overwrite:       *overwrite,
+		CopySourceFile:  *copySource,
+		FTPWatts:        *ftp,
+		IncludeAnalysis: *withAnalysis,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "export failed: %v\n", err)
@@ -47,6 +51,15 @@ func main() {
 	fmt.Printf("Output dir: %s\n", result.OutputDir)
 	fmt.Printf("Manifest:   %s\n", result.ManifestPath)
 	fmt.Printf("Records:    %s\n", result.RecordsPath)
+	if result.AnalysisPath != "" {
+		fmt.Printf("Analysis:   %s\n", result.AnalysisPath)
+	}
+	if result.WorkoutStructurePath != "" {
+		fmt.Printf("Structure:  %s\n", result.WorkoutStructurePath)
+	}
+	if result.AnalysisError != "" {
+		fmt.Printf("Analysis:   unavailable (%s)\n", result.AnalysisError)
+	}
 	if result.SourceCopyPath != "" {
 		fmt.Printf("Source fit: %s\n", result.SourceCopyPath)
 	}

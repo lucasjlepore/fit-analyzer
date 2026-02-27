@@ -314,9 +314,12 @@ func (ps *parseState) parseDefinitionRecord(recordIndex, startOffset, pos int, h
 		bt := decompressBaseType(baseRaw)
 		fieldDefs = append(fieldDefs, FieldDefinition{
 			FieldNumber:   fieldNum,
+			FieldName:     semanticForField(globalMsgNum, fieldNum).name,
 			Size:          size,
 			BaseTypeRaw:   baseRaw,
 			BaseType:      makeBaseTypeInfo(bt),
+			Units:         semanticForField(globalMsgNum, fieldNum).units,
+			InvalidRule:   invalidRuleForBase(makeBaseTypeInfo(bt)),
 			RawDefinition: hex.EncodeToString(rawDef),
 		})
 		stateFields = append(stateFields, fieldDefState{
@@ -420,7 +423,7 @@ func (ps *parseState) parseDataRecord(recordIndex, startOffset, pos int, headerB
 		if err != nil {
 			return RecordEnvelope{}, 0, err
 		}
-		value := decodeField(raw, fieldDef, def.arch)
+		value := decodeField(raw, fieldDef, def.arch, def.globalMessageNum)
 		value.FieldIndex = i
 		if fieldDef.fieldNumber == 253 {
 			if ts, ok := asTimestampRaw(value.Decoded); ok {
@@ -433,6 +436,9 @@ func (ps *parseState) parseDataRecord(recordIndex, startOffset, pos int, headerB
 			}
 		}
 		dataRecord.Fields = append(dataRecord.Fields, value)
+	}
+	if def.globalMessageNum == 20 {
+		dataRecord.Flat = buildRecordFlat(dataRecord.Fields)
 	}
 
 	if len(def.devFields) > 0 {
@@ -467,12 +473,14 @@ func (ps *parseState) parseDataRecord(recordIndex, startOffset, pos int, headerB
 	}, pos, nil
 }
 
-func decodeField(raw []byte, def fieldDefState, arch binary.ByteOrder) FieldValue {
+func decodeField(raw []byte, def fieldDefState, arch binary.ByteOrder, global uint16) FieldValue {
 	bt := def.base
 	spec, ok := baseSpecs[bt]
+	meta := semanticForField(global, def.fieldNumber)
 	if !ok {
 		return FieldValue{
 			FieldNumber: def.fieldNumber,
+			FieldName:   meta.name,
 			Size:        def.size,
 			BaseTypeRaw: def.baseRaw,
 			BaseType: BaseTypeInfo{
@@ -480,6 +488,8 @@ func decodeField(raw []byte, def fieldDefState, arch binary.ByteOrder) FieldValu
 				Name:          fmt.Sprintf("unknown_0x%02X", uint8(bt)),
 				SizeBytes:     1,
 			},
+			Units:       meta.units,
+			InvalidRule: invalidRuleForBase(makeBaseTypeInfo(bt)),
 			RawHex:      hex.EncodeToString(raw),
 			Decoded:     bytesToInts(raw),
 			DecodedType: "bytes",
@@ -491,9 +501,12 @@ func decodeField(raw []byte, def fieldDefState, arch binary.ByteOrder) FieldValu
 
 	field := FieldValue{
 		FieldNumber: def.fieldNumber,
+		FieldName:   meta.name,
 		Size:        def.size,
 		BaseTypeRaw: def.baseRaw,
 		BaseType:    makeBaseTypeInfo(bt),
+		Units:       meta.units,
+		InvalidRule: invalidRuleForBase(makeBaseTypeInfo(bt)),
 		RawHex:      hex.EncodeToString(raw),
 	}
 
@@ -544,6 +557,11 @@ func decodeField(raw []byte, def fieldDefState, arch binary.ByteOrder) FieldValu
 		field.Decoded = values
 		field.DecodedType = "array"
 		field.IsArray = true
+	}
+	if meta.scaler != nil && count == 1 && len(invalidElements) == 0 {
+		if scaled, ok := meta.scaler(field.Decoded); ok {
+			field.Scaled = scaled
+		}
 	}
 	return field
 }
@@ -709,4 +727,126 @@ func bytesToInts(raw []byte) []int {
 		out[i] = int(raw[i])
 	}
 	return out
+}
+
+func buildRecordFlat(fields []FieldValue) *RecordFlat {
+	flat := &RecordFlat{}
+	field := func(num uint8) (FieldValue, bool) {
+		for _, f := range fields {
+			if f.FieldNumber == num {
+				return f, true
+			}
+		}
+		return FieldValue{}, false
+	}
+
+	if tsField, ok := field(253); ok {
+		if tsRaw, ok := asUint32(tsField.Decoded); ok {
+			flat.TimestampRaw = tsRaw
+			if tsField.Timestamp != nil {
+				flat.TimestampUTC = tsField.Timestamp.UTC
+			} else if s, ok := tsField.Scaled.(string); ok {
+				flat.TimestampUTC = s
+			}
+		}
+	}
+	if p, ok := field(7); ok && !p.Invalid {
+		flat.PowerW = floatPointer(p.Decoded)
+		flat.ValidPower = flat.PowerW != nil
+	}
+	if hr, ok := field(3); ok && !hr.Invalid {
+		flat.HRBPM = floatPointer(hr.Decoded)
+		flat.ValidHR = flat.HRBPM != nil
+	}
+	if cad, ok := field(4); ok && !cad.Invalid {
+		flat.CadenceRPM = floatPointer(cad.Decoded)
+		flat.ValidCadence = flat.CadenceRPM != nil
+	}
+	if sp, ok := field(6); ok && !sp.Invalid {
+		if v := scaledOrRawFloat(sp); v != nil {
+			flat.SpeedMPS = v
+		}
+	}
+	if d, ok := field(5); ok && !d.Invalid {
+		if v := scaledOrRawFloat(d); v != nil {
+			flat.DistanceM = v
+		}
+	}
+	if alt, ok := field(2); ok && !alt.Invalid {
+		if v := scaledOrRawFloat(alt); v != nil {
+			flat.AltitudeM = v
+		}
+	}
+	if t, ok := field(13); ok && !t.Invalid {
+		flat.TemperatureC = floatPointer(t.Decoded)
+	}
+	if g, ok := field(9); ok && !g.Invalid {
+		if v := scaledOrRawFloat(g); v != nil {
+			flat.GradePct = v
+		}
+	}
+	return flat
+}
+
+func scaledOrRawFloat(f FieldValue) *float64 {
+	if f.Scaled != nil {
+		if v := floatPointer(f.Scaled); v != nil {
+			return v
+		}
+	}
+	return floatPointer(f.Decoded)
+}
+
+func floatPointer(v any) *float64 {
+	switch x := v.(type) {
+	case float64:
+		out := x
+		return &out
+	case float32:
+		out := float64(x)
+		return &out
+	case int:
+		out := float64(x)
+		return &out
+	case int8:
+		out := float64(x)
+		return &out
+	case int16:
+		out := float64(x)
+		return &out
+	case int32:
+		out := float64(x)
+		return &out
+	case int64:
+		out := float64(x)
+		return &out
+	case uint8:
+		out := float64(x)
+		return &out
+	case uint16:
+		out := float64(x)
+		return &out
+	case uint32:
+		out := float64(x)
+		return &out
+	case uint64:
+		out := float64(x)
+		return &out
+	default:
+		return nil
+	}
+}
+
+func asUint32(v any) (uint32, bool) {
+	switch x := v.(type) {
+	case uint32:
+		return x, true
+	case uint64:
+		if x > uint64(^uint32(0)) {
+			return 0, false
+		}
+		return uint32(x), true
+	default:
+		return 0, false
+	}
 }

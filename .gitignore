@@ -11,4 +11,5 @@ coverage.out
 
 # Generated exports and local data
 exports/
+outputs/
 *.fit

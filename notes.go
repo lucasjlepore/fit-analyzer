@@ -124,6 +124,26 @@ func BuildTrainingNotes(a *Analysis) string {
 		b.WriteString("- No repeating hard interval structure was confidently detected from lap data.\n")
 	}
 
+	if a.WorkoutStructure.CanonicalLabel != "" {
+		b.WriteString("\nWorkout Structure\n")
+		fmt.Fprintf(
+			&b,
+			"- %s (confidence %.0f%%)\n",
+			a.WorkoutStructure.CanonicalLabel,
+			a.WorkoutStructure.Confidence*100.0,
+		)
+		if a.WorkoutStructure.MainSet != nil {
+			fmt.Fprintf(
+				&b,
+				"- Main set execution: %s, drift %+.1f%% power / %+.1f%% cadence / %+0.f bpm HR.\n",
+				a.WorkoutStructure.MainSet.Prescription,
+				a.WorkoutStructure.MainSet.PowerDriftPct,
+				a.WorkoutStructure.MainSet.CadenceDriftPct,
+				a.WorkoutStructure.MainSet.HeartRateDriftBPM,
+			)
+		}
+	}
+
 	b.WriteString("\nCoaching Notes\n")
 	b.WriteString("- ")
 	b.WriteString(coachingAssessment(a))
