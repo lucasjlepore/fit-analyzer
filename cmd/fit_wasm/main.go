@@ -77,8 +77,8 @@ func analyzeFit(_ js.Value, args []js.Value) any {
 	return map[string]any{
 		"ok":       true,
 		"zip":      payload,
-		"warnings": result.Warnings,
-		"files":    fileNames,
+		"warnings": stringsToAny(result.Warnings),
+		"files":    stringsToAny(fileNames),
 	}
 }
 
@@ -137,4 +137,12 @@ func getFloat(v js.Value, key string) float64 {
 		return 0
 	}
 	return out.Float()
+}
+
+func stringsToAny(values []string) []any {
+	out := make([]any, len(values))
+	for i, v := range values {
+		out[i] = v
+	}
+	return out
 }
