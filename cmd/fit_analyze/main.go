@@ -15,11 +15,12 @@ func main() {
 		fitPath   = flag.String("fit", "", "Path to input .fit file")
 		outDir    = flag.String("out", "", "Output directory")
 		ftp       = flag.Float64("ftp", 0, "FTP override in watts")
+		weightKG  = flag.Float64("weight", 0, "Athlete weight in kg")
 		format    = flag.String("format", "parquet", "Canonical sample format: parquet|csv")
 		overwrite = flag.Bool("overwrite", true, "Allow writing into non-empty output directories")
 	)
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s --fit input.fit --out outdir [--ftp 223] [--format parquet|csv]\n", filepath.Base(os.Args[0]))
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s --fit input.fit --out outdir [--ftp 223] [--weight 72.5] [--format parquet|csv]\n", filepath.Base(os.Args[0]))
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -33,6 +34,7 @@ func main() {
 		FitPath:     *fitPath,
 		OutDir:      *outDir,
 		FTPOverride: *ftp,
+		WeightKG:    *weightKG,
 		Format:      *format,
 		Overwrite:   *overwrite,
 		CopySource:  true,
@@ -55,5 +57,8 @@ func main() {
 	fmt.Printf("activity summary:    %s\n", result.ActivitySummaryPath)
 	if result.SourceCopyPath != "" {
 		fmt.Printf("source copy:         %s\n", result.SourceCopyPath)
+	}
+	for _, w := range result.Warnings {
+		fmt.Printf("warning:             %s\n", w)
 	}
 }

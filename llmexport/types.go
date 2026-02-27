@@ -24,21 +24,22 @@ type ExportOptions struct {
 
 // ExportResult describes generated files.
 type ExportResult struct {
-	OutputDir            string `json:"output_dir"`
-	ManifestPath         string `json:"manifest_path"`
-	RecordsPath          string `json:"records_path"`
-	AnalysisPath         string `json:"analysis_path,omitempty"`
-	WorkoutStructurePath string `json:"workout_structure_path,omitempty"`
-	AnalysisError        string `json:"analysis_error,omitempty"`
-	SourceCopyPath       string `json:"source_copy_path,omitempty"`
-	RecordCount          int    `json:"record_count"`
-	DefinitionCount      int    `json:"definition_count"`
-	DataMessageCount     int    `json:"data_message_count"`
-	SourceSHA256         string `json:"source_sha256"`
-	SourceSizeBytes      int64  `json:"source_size_bytes"`
-	FileCRCValid         bool   `json:"file_crc_valid"`
-	HeaderCRCValid       bool   `json:"header_crc_valid"`
-	ChainedDataRemain    int64  `json:"chained_data_remain"`
+	OutputDir            string   `json:"output_dir"`
+	ManifestPath         string   `json:"manifest_path"`
+	RecordsPath          string   `json:"records_path"`
+	AnalysisPath         string   `json:"analysis_path,omitempty"`
+	WorkoutStructurePath string   `json:"workout_structure_path,omitempty"`
+	AnalysisError        string   `json:"analysis_error,omitempty"`
+	SourceCopyPath       string   `json:"source_copy_path,omitempty"`
+	RecordCount          int      `json:"record_count"`
+	DefinitionCount      int      `json:"definition_count"`
+	DataMessageCount     int      `json:"data_message_count"`
+	SourceSHA256         string   `json:"source_sha256"`
+	SourceSizeBytes      int64    `json:"source_size_bytes"`
+	FileCRCValid         bool     `json:"file_crc_valid"`
+	HeaderCRCValid       bool     `json:"header_crc_valid"`
+	ChainedDataRemain    int64    `json:"chained_data_remain"`
+	Warnings             []string `json:"warnings,omitempty"`
 }
 
 // Manifest captures export metadata and pointers to exported files.
@@ -62,6 +63,7 @@ type Manifest struct {
 	LeftoverBytes        int64         `json:"leftover_bytes"`
 	FileIdProjection     *FileIDInfo   `json:"file_id_projection,omitempty"`
 	SchemaDescription    SchemaDetails `json:"schema_description"`
+	Warnings             []string      `json:"warnings,omitempty"`
 }
 
 // SchemaDetails documents the record shape for downstream applications.

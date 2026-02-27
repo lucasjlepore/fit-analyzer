@@ -40,6 +40,17 @@ func ExportFile(inputPath, outputDir string, opts ExportOptions) (*ExportResult,
 	if err != nil {
 		return nil, fmt.Errorf("parse fit file: %w", err)
 	}
+	bundleWarnings := BuildWarningsFromBundle(&ParsedBundle{
+		Header:             parsed.Header,
+		HeaderCRC:          parsed.HeaderCRC,
+		FileCRC:            parsed.FileCRC,
+		Records:            parsed.Records,
+		DefinitionCount:    parsed.DefinitionCount,
+		DataMessageCount:   parsed.DataMessageCount,
+		LeftoverBytesCount: parsed.LeftoverBytesCount,
+		SourceSHA256:       sha,
+		SourceSizeBytes:    int64(len(data)),
+	})
 
 	if err := ensureOutputDir(outputDir, opts.Overwrite); err != nil {
 		return nil, err
@@ -109,6 +120,7 @@ func ExportFile(inputPath, outputDir string, opts ExportOptions) (*ExportResult,
 				"analysis.json and workout_structure.json provide semantic block labels for LLM reasoning.",
 			},
 		},
+		Warnings: bundleWarnings,
 	}
 
 	manifestPath := filepath.Join(outputDir, "manifest.json")
@@ -140,6 +152,7 @@ func ExportFile(inputPath, outputDir string, opts ExportOptions) (*ExportResult,
 		FileCRCValid:         parsed.FileCRC.Valid,
 		HeaderCRCValid:       parsed.HeaderCRC.Valid,
 		ChainedDataRemain:    parsed.LeftoverBytesCount,
+		Warnings:             bundleWarnings,
 	}, nil
 }
 

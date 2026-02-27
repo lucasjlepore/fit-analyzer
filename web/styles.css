@@ -1,0 +1,148 @@
+:root {
+  --bg: #eef2f7;
+  --panel: #ffffff;
+  --text: #1b2a41;
+  --muted: #5f6b7a;
+  --brand: #006d77;
+  --brand-2: #83c5be;
+  --warn: #9a3412;
+  --line: #d8e1ea;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: var(--text);
+  background: radial-gradient(circle at top right, #d6edf0, var(--bg) 40%);
+}
+
+.app {
+  width: min(960px, 94vw);
+  margin: 32px auto;
+  display: grid;
+  gap: 16px;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(1.75rem, 2.2vw, 2.4rem);
+  letter-spacing: 0.02em;
+}
+
+.hero p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+
+.drop-zone {
+  display: block;
+  border: 2px dashed #8ab6be;
+  border-radius: 12px;
+  padding: 28px;
+  text-align: center;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.drop-zone.dragging {
+  border-color: var(--brand);
+  background: #f1fbfb;
+}
+
+.drop-zone input {
+  display: none;
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.92rem;
+}
+
+input,
+select,
+button {
+  font: inherit;
+}
+
+input,
+select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+#download-btn {
+  background: #0f766e;
+}
+
+.muted,
+.status {
+  color: var(--muted);
+}
+
+.warnings {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--warn);
+  min-height: 22px;
+}
+
+.log {
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #f8fbfd;
+  min-height: 130px;
+  max-height: 280px;
+  overflow: auto;
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-size: 0.83rem;
+}

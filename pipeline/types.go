@@ -7,22 +7,40 @@ type Options struct {
 	FitPath     string
 	OutDir      string
 	FTPOverride float64
+	WeightKG    float64
 	Format      string // parquet|csv
 	Overwrite   bool
 	CopySource  bool
 }
 
+// BytesOptions configures in-memory pipeline execution (web/WASM-safe).
+type BytesOptions struct {
+	SourceFileName string
+	FitData        []byte
+	FTPOverride    float64
+	WeightKG       float64
+	Format         string // parquet|csv
+	CopySource     bool
+}
+
 // Result returns generated output paths.
 type Result struct {
-	OutputDir            string `json:"output_dir"`
-	ManifestPath         string `json:"manifest_path"`
-	RecordsPath          string `json:"records_path"`
-	SourceCopyPath       string `json:"source_copy_path,omitempty"`
-	CanonicalSamplesPath string `json:"canonical_samples_path"`
-	MessagesIndexPath    string `json:"messages_index_path"`
-	WorkoutStructurePath string `json:"workout_structure_path"`
-	LapSummaryPath       string `json:"lap_summary_path,omitempty"`
-	ActivitySummaryPath  string `json:"activity_summary_path"`
+	OutputDir            string   `json:"output_dir"`
+	ManifestPath         string   `json:"manifest_path"`
+	RecordsPath          string   `json:"records_path"`
+	SourceCopyPath       string   `json:"source_copy_path,omitempty"`
+	CanonicalSamplesPath string   `json:"canonical_samples_path"`
+	MessagesIndexPath    string   `json:"messages_index_path"`
+	WorkoutStructurePath string   `json:"workout_structure_path"`
+	LapSummaryPath       string   `json:"lap_summary_path,omitempty"`
+	ActivitySummaryPath  string   `json:"activity_summary_path"`
+	Warnings             []string `json:"warnings,omitempty"`
+}
+
+// BytesResult returns generated in-memory artifact payloads.
+type BytesResult struct {
+	Files    map[string][]byte `json:"files"`
+	Warnings []string          `json:"warnings,omitempty"`
 }
 
 // CanonicalSample represents one global message 20 sample row.
@@ -126,17 +144,21 @@ type LapSummary struct {
 
 // ActivitySummaryFile contains one-session aggregate metrics.
 type ActivitySummaryFile struct {
-	DurationS     float64  `json:"duration_s"`
-	AvgPowerW     float64  `json:"avg_power_w"`
-	NPW           float64  `json:"np_w"`
-	MaxPowerW     float64  `json:"max_power_w"`
-	AvgHRBPM      float64  `json:"avg_hr_bpm"`
-	MaxHRBPM      float64  `json:"max_hr_bpm"`
-	AvgCadenceRPM float64  `json:"avg_cadence_rpm"`
-	MaxCadenceRPM float64  `json:"max_cadence_rpm"`
-	TotalWorkKJ   float64  `json:"total_work_kj"`
-	FTPWUsed      *float64 `json:"ftp_w_used,omitempty"`
-	IF            *float64 `json:"if,omitempty"`
-	TSSLike       *float64 `json:"tss_like,omitempty"`
-	Warnings      []string `json:"warnings,omitempty"`
+	DurationS      float64  `json:"duration_s"`
+	AvgPowerW      float64  `json:"avg_power_w"`
+	NPW            float64  `json:"np_w"`
+	MaxPowerW      float64  `json:"max_power_w"`
+	AvgHRBPM       float64  `json:"avg_hr_bpm"`
+	MaxHRBPM       float64  `json:"max_hr_bpm"`
+	AvgCadenceRPM  float64  `json:"avg_cadence_rpm"`
+	MaxCadenceRPM  float64  `json:"max_cadence_rpm"`
+	TotalWorkKJ    float64  `json:"total_work_kj"`
+	FTPWUsed       *float64 `json:"ftp_w_used,omitempty"`
+	WeightKG       *float64 `json:"weight_kg,omitempty"`
+	AvgPowerWPerKG *float64 `json:"avg_power_w_per_kg,omitempty"`
+	NPWPerKG       *float64 `json:"np_w_per_kg,omitempty"`
+	MaxPowerWPerKG *float64 `json:"max_power_w_per_kg,omitempty"`
+	IF             *float64 `json:"if,omitempty"`
+	TSSLike        *float64 `json:"tss_like,omitempty"`
+	Warnings       []string `json:"warnings,omitempty"`
 }

@@ -20,6 +20,7 @@ func TestRunOnKnownZwiftFIT(t *testing.T) {
 		FitPath:     fitPath,
 		OutDir:      outDir,
 		FTPOverride: 223,
+		WeightKG:    72.5,
 		Format:      "csv",
 		Overwrite:   true,
 		CopySource:  false,
@@ -64,6 +65,12 @@ func TestRunOnKnownZwiftFIT(t *testing.T) {
 	if activitySummary.NPW <= 0 {
 		t.Fatalf("expected np_w > 0, got %v", activitySummary.NPW)
 	}
+	if activitySummary.WeightKG == nil || *activitySummary.WeightKG <= 0 {
+		t.Fatalf("expected weight_kg to be populated")
+	}
+	if activitySummary.NPWPerKG == nil || *activitySummary.NPWPerKG <= 0 {
+		t.Fatalf("expected np_w_per_kg > 0")
+	}
 
 	structure := WorkoutStructureFile{}
 	data, err = os.ReadFile(res.WorkoutStructurePath)
@@ -95,6 +102,41 @@ func TestRunOnKnownZwiftFIT(t *testing.T) {
 			if diff < -2 || diff > 2 {
 				t.Fatalf("step duration mismatch >2s for step %d: start/end=%.1fs duration=%.1fs", step.StepIndex, end.Sub(start).Seconds(), *step.DurationS)
 			}
+		}
+	}
+}
+
+func TestRunBytesProducesArtifacts(t *testing.T) {
+	fitPath := "/Users/lucaslepore/Downloads/Zwift_W1_5x4_110.fit"
+	data, err := os.ReadFile(fitPath)
+	if err != nil {
+		t.Skipf("sample fit file not found at %s", fitPath)
+	}
+
+	res, err := RunBytes(BytesOptions{
+		SourceFileName: "Zwift_W1_5x4_110.fit",
+		FitData:        data,
+		FTPOverride:    223,
+		WeightKG:       72.5,
+		Format:         "csv",
+		CopySource:     true,
+	})
+	if err != nil {
+		t.Fatalf("RunBytes() error: %v", err)
+	}
+
+	required := []string{
+		"manifest.json",
+		"records.jsonl",
+		"messages_index.json",
+		"workout_structure.json",
+		"activity_summary.json",
+		"canonical_samples.csv",
+		"source.fit",
+	}
+	for _, name := range required {
+		if _, ok := res.Files[name]; !ok {
+			t.Fatalf("missing artifact %s", name)
 		}
 	}
 }

@@ -1,7 +1,7 @@
 package pipeline
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -16,9 +16,6 @@ import (
 	fitnotes "fit-analyzer"
 	"fit-analyzer/llmexport"
 	"github.com/tormoder/fit"
-	"github.com/xitongsys/parquet-go-source/local"
-	"github.com/xitongsys/parquet-go/parquet"
-	"github.com/xitongsys/parquet-go/writer"
 )
 
 // Run executes the full fit_analyze pipeline and writes all required artifacts.
@@ -29,6 +26,63 @@ func Run(opts Options) (*Result, error) {
 	if strings.TrimSpace(opts.OutDir) == "" {
 		return nil, fmt.Errorf("output directory is required")
 	}
+	if err := ensureOutputDir(opts.OutDir, opts.Overwrite); err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(opts.FitPath)
+	if err != nil {
+		return nil, fmt.Errorf("read fit file: %w", err)
+	}
+
+	bytesResult, err := RunBytes(BytesOptions{
+		SourceFileName: filepath.Base(opts.FitPath),
+		FitData:        data,
+		FTPOverride:    opts.FTPOverride,
+		WeightKG:       opts.WeightKG,
+		Format:         opts.Format,
+		CopySource:     opts.CopySource,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	canonicalName := canonicalArtifactName(bytesResult.Files)
+	if canonicalName == "" {
+		canonicalName = "canonical_samples." + formatExtension(strings.ToLower(strings.TrimSpace(opts.Format)))
+	}
+	canonicalPath := filepath.Join(opts.OutDir, canonicalName)
+	result := &Result{
+		OutputDir:            opts.OutDir,
+		ManifestPath:         filepath.Join(opts.OutDir, "manifest.json"),
+		RecordsPath:          filepath.Join(opts.OutDir, "records.jsonl"),
+		CanonicalSamplesPath: canonicalPath,
+		MessagesIndexPath:    filepath.Join(opts.OutDir, "messages_index.json"),
+		WorkoutStructurePath: filepath.Join(opts.OutDir, "workout_structure.json"),
+		ActivitySummaryPath:  filepath.Join(opts.OutDir, "activity_summary.json"),
+		Warnings:             append([]string(nil), bytesResult.Warnings...),
+	}
+	if _, ok := bytesResult.Files["lap_summary.json"]; ok {
+		result.LapSummaryPath = filepath.Join(opts.OutDir, "lap_summary.json")
+	}
+	if _, ok := bytesResult.Files["source.fit"]; ok {
+		result.SourceCopyPath = filepath.Join(opts.OutDir, "source.fit")
+	}
+
+	for name, content := range bytesResult.Files {
+		path := filepath.Join(opts.OutDir, name)
+		if err := os.WriteFile(path, content, 0o644); err != nil {
+			return nil, fmt.Errorf("write %s: %w", name, err)
+		}
+	}
+	return result, nil
+}
+
+// RunBytes executes fit analysis fully in memory and returns file payloads.
+func RunBytes(opts BytesOptions) (*BytesResult, error) {
+	if len(opts.FitData) == 0 {
+		return nil, fmt.Errorf("fit bytes are required")
+	}
 	format := strings.ToLower(strings.TrimSpace(opts.Format))
 	if format == "" {
 		format = "parquet"
@@ -37,20 +91,29 @@ func Run(opts Options) (*Result, error) {
 		return nil, fmt.Errorf("unsupported format %q (expected parquet|csv)", format)
 	}
 
-	baseExport, err := llmexport.ExportFile(opts.FitPath, opts.OutDir, llmexport.ExportOptions{
-		Overwrite:       opts.Overwrite,
-		CopySourceFile:  opts.CopySource,
-		IncludeAnalysis: false,
-	})
+	sourceName := strings.TrimSpace(opts.SourceFileName)
+	if sourceName == "" {
+		sourceName = "input.fit"
+	}
+	files := make(map[string][]byte, 8)
+	warnings := make([]string, 0, 8)
+	if !strings.HasSuffix(strings.ToLower(sourceName), ".fit") {
+		warnings = append(warnings, "input filename does not end with .fit")
+	}
+	if opts.FTPOverride <= 0 {
+		warnings = append(warnings, "ftp override not provided; ftp_w_used will be inferred from FIT metadata when possible")
+	}
+	if opts.WeightKG <= 0 {
+		warnings = append(warnings, "weight_kg missing or invalid; W/kg metrics omitted")
+	}
+
+	bundle, err := llmexport.ParseBytes(opts.FitData)
 	if err != nil {
 		return nil, err
 	}
+	warnings = append(warnings, llmexport.BuildWarningsFromBundle(bundle)...)
 
-	records, err := loadRecords(baseExport.RecordsPath)
-	if err != nil {
-		return nil, fmt.Errorf("load records.jsonl: %w", err)
-	}
-
+	records := bundle.Records
 	samples, err := buildCanonicalSamples(records)
 	if err != nil {
 		return nil, fmt.Errorf("build canonical samples: %w", err)
@@ -59,83 +122,110 @@ func Run(opts Options) (*Result, error) {
 		return nil, fmt.Errorf("no global message 20 record samples found")
 	}
 
-	canonicalPath := filepath.Join(opts.OutDir, "canonical_samples."+formatExtension(format))
+	outputFormat := format
+	var canonical []byte
 	switch format {
 	case "csv":
-		if err := writeCanonicalCSV(canonicalPath, samples); err != nil {
-			return nil, fmt.Errorf("write canonical csv: %w", err)
+		canonical, err = marshalCanonicalCSV(samples)
+		if err != nil {
+			return nil, fmt.Errorf("marshal canonical csv: %w", err)
 		}
 	case "parquet":
-		if err := writeCanonicalParquet(canonicalPath, samples); err != nil {
-			return nil, fmt.Errorf("write canonical parquet: %w", err)
+		canonical, err = marshalCanonicalParquet(samples)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("parquet unavailable: %v; falling back to csv", err))
+			canonical, err = marshalCanonicalCSV(samples)
+			if err != nil {
+				return nil, fmt.Errorf("marshal canonical csv fallback: %w", err)
+			}
+			outputFormat = "csv"
 		}
 	}
+	files["canonical_samples."+formatExtension(outputFormat)] = canonical
 
-	msgIndex := buildMessagesIndex(records)
-	msgIndexPath := filepath.Join(opts.OutDir, "messages_index.json")
-	if err := writeJSON(msgIndexPath, msgIndex); err != nil {
-		return nil, fmt.Errorf("write messages_index.json: %w", err)
-	}
-
-	analysis, err := fitnotes.AnalyzeFile(opts.FitPath, fitnotes.Config{FTPWatts: opts.FTPOverride})
+	indexJSON, err := llmexport.MarshalJSON(buildMessagesIndex(records))
 	if err != nil {
-		return nil, fmt.Errorf("analyze fit file: %w", err)
+		return nil, fmt.Errorf("marshal messages index: %w", err)
 	}
+	files["messages_index.json"] = indexJSON
 
-	activity, err := decodeActivity(opts.FitPath)
+	analysis, err := fitnotes.AnalyzeBytes(opts.FitData, sourceName, fitnotes.Config{
+		FTPWatts: opts.FTPOverride,
+		WeightKG: opts.WeightKG,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("analyze fit bytes: %w", err)
+	}
+	activity, err := decodeActivityBytes(opts.FitData)
 	if err != nil {
 		return nil, fmt.Errorf("decode activity: %w", err)
 	}
 
 	ftpCandidates := collectFTPCandidates(records, activity, opts.FTPOverride)
 	ftpUsed := chooseFTPCandidate(ftpCandidates)
+	if ftpUsed == nil {
+		warnings = append(warnings, "unable to determine ftp_w_used from metadata or override")
+	}
 
 	lapSummary := buildLapSummary(activity, samples)
-	lapSummaryPath := ""
 	if len(lapSummary.Laps) > 0 {
-		lapSummaryPath = filepath.Join(opts.OutDir, "lap_summary.json")
-		if err := writeJSON(lapSummaryPath, lapSummary); err != nil {
-			return nil, fmt.Errorf("write lap_summary.json: %w", err)
+		lapJSON, err := llmexport.MarshalJSON(lapSummary)
+		if err != nil {
+			return nil, fmt.Errorf("marshal lap summary: %w", err)
 		}
+		files["lap_summary.json"] = lapJSON
 	}
 
 	steps := buildWorkoutSteps(records, analysis, samples, lapSummary, ftpUsed)
-	if ftpUsed != nil {
-		for i := range steps {
-			enrichStepCompliance(&steps[i], samples, ftpUsed.FTPW)
+	for i := range steps {
+		ftp := 0.0
+		if ftpUsed != nil {
+			ftp = ftpUsed.FTPW
 		}
-	} else {
-		for i := range steps {
-			enrichStepCompliance(&steps[i], samples, 0)
-		}
+		enrichStepCompliance(&steps[i], samples, ftp)
 	}
-
-	workoutStructure := WorkoutStructureFile{
+	workout := WorkoutStructureFile{
 		FTPSources: ftpCandidates,
 		FTPWUsed:   ftpUsed,
 		Steps:      steps,
 	}
-	workoutStructurePath := filepath.Join(opts.OutDir, "workout_structure.json")
-	if err := writeJSON(workoutStructurePath, workoutStructure); err != nil {
-		return nil, fmt.Errorf("write workout_structure.json: %w", err)
+	workoutJSON, err := llmexport.MarshalJSON(workout)
+	if err != nil {
+		return nil, fmt.Errorf("marshal workout structure: %w", err)
+	}
+	files["workout_structure.json"] = workoutJSON
+
+	activitySummary := buildActivitySummary(samples, ftpUsed, analysis.ElapsedSeconds, opts.WeightKG, warnings)
+	warnings = dedupeStrings(append(warnings, activitySummary.Warnings...))
+	activityJSON, err := llmexport.MarshalJSON(activitySummary)
+	if err != nil {
+		return nil, fmt.Errorf("marshal activity summary: %w", err)
+	}
+	files["activity_summary.json"] = activityJSON
+
+	recordsJSONL, err := llmexport.MarshalJSONL(records)
+	if err != nil {
+		return nil, fmt.Errorf("marshal records jsonl: %w", err)
+	}
+	files["records.jsonl"] = recordsJSONL
+
+	manifest, err := buildManifest(sourceName, opts.FitData, bundle, warnings)
+	if err != nil {
+		return nil, fmt.Errorf("build manifest: %w", err)
+	}
+	manifestJSON, err := llmexport.MarshalJSON(manifest)
+	if err != nil {
+		return nil, fmt.Errorf("marshal manifest: %w", err)
+	}
+	files["manifest.json"] = manifestJSON
+
+	if opts.CopySource {
+		files["source.fit"] = append([]byte(nil), opts.FitData...)
 	}
 
-	activitySummary := buildActivitySummary(samples, ftpUsed, analysis.ElapsedSeconds)
-	activitySummaryPath := filepath.Join(opts.OutDir, "activity_summary.json")
-	if err := writeJSON(activitySummaryPath, activitySummary); err != nil {
-		return nil, fmt.Errorf("write activity_summary.json: %w", err)
-	}
-
-	return &Result{
-		OutputDir:            opts.OutDir,
-		ManifestPath:         baseExport.ManifestPath,
-		RecordsPath:          baseExport.RecordsPath,
-		SourceCopyPath:       baseExport.SourceCopyPath,
-		CanonicalSamplesPath: canonicalPath,
-		MessagesIndexPath:    msgIndexPath,
-		WorkoutStructurePath: workoutStructurePath,
-		LapSummaryPath:       lapSummaryPath,
-		ActivitySummaryPath:  activitySummaryPath,
+	return &BytesResult{
+		Files:    files,
+		Warnings: dedupeStrings(warnings),
 	}, nil
 }
 
@@ -146,47 +236,69 @@ func formatExtension(format string) string {
 	return "parquet"
 }
 
-func decodeActivity(path string) (*fit.ActivityFile, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
+func canonicalArtifactName(files map[string][]byte) string {
+	for name := range files {
+		if strings.HasPrefix(name, "canonical_samples.") {
+			return name
+		}
 	}
-	defer f.Close()
+	return ""
+}
 
-	decoded, err := fit.Decode(f)
+func ensureOutputDir(path string, overwrite bool) error {
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return fmt.Errorf("create output directory: %w", err)
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("read output directory: %w", err)
+	}
+	if len(entries) > 0 && !overwrite {
+		return fmt.Errorf("output directory is not empty: %s (set overwrite=true to allow)", path)
+	}
+	return nil
+}
+
+func buildManifest(sourceName string, fitBytes []byte, bundle *llmexport.ParsedBundle, warnings []string) (llmexport.Manifest, error) {
+	manifest := llmexport.Manifest{
+		FormatVersion:        llmexport.ExportFormatVersion,
+		GeneratedAt:          time.Now().UTC(),
+		SourceFile:           sourceName,
+		SourceFileName:       filepath.Base(sourceName),
+		SourceSHA256:         bundle.SourceSHA256,
+		SourceSizeBytes:      bundle.SourceSizeBytes,
+		Header:               bundle.Header,
+		HeaderCRC:            bundle.HeaderCRC,
+		FileCRC:              bundle.FileCRC,
+		RecordsPath:          "records.jsonl",
+		WorkoutStructurePath: "workout_structure.json",
+		RecordCount:          len(bundle.Records),
+		DefinitionCount:      bundle.DefinitionCount,
+		DataMessageCount:     bundle.DataMessageCount,
+		LeftoverBytes:        bundle.LeftoverBytesCount,
+		FileIdProjection:     llmexport.ProjectFileIDFromBytes(fitBytes),
+		SchemaDescription: llmexport.SchemaDetails{
+			RecordType: "JSONL line-per-FIT-record preserving original order and byte offsets",
+			Notes: []string{
+				"Lossless: every FIT data record and field payload is exported with raw hex.",
+				"Each line includes decoded values and validity flags without dropping invalid sentinels.",
+				"Developer data fields are preserved as raw bytes.",
+				"Definition messages are preserved so unknown/global custom messages remain interpretable.",
+				"Use record_index and file_offset for deterministic chunking in LLM pipelines.",
+				"analysis artifacts provide semantic block labels for LLM reasoning.",
+			},
+		},
+		Warnings: dedupeStrings(warnings),
+	}
+	return manifest, nil
+}
+
+func decodeActivityBytes(data []byte) (*fit.ActivityFile, error) {
+	decoded, err := fit.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
 	return decoded.Activity()
-}
-
-func loadRecords(path string) ([]llmexport.RecordEnvelope, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	sc := bufio.NewScanner(f)
-	buf := make([]byte, 0, 1024*1024)
-	sc.Buffer(buf, 16*1024*1024)
-
-	records := make([]llmexport.RecordEnvelope, 0, 4096)
-	for sc.Scan() {
-		line := sc.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var rec llmexport.RecordEnvelope
-		if err := json.Unmarshal(line, &rec); err != nil {
-			return nil, fmt.Errorf("unmarshal jsonl line: %w", err)
-		}
-		records = append(records, rec)
-	}
-	if err := sc.Err(); err != nil {
-		return nil, err
-	}
-	return records, nil
 }
 
 func buildCanonicalSamples(records []llmexport.RecordEnvelope) ([]CanonicalSample, error) {
@@ -841,7 +953,7 @@ func enrichStepCompliance(step *WorkoutStep, samples []CanonicalSample, ftp floa
 	}
 }
 
-func buildActivitySummary(samples []CanonicalSample, ftpUsed *FTPCandidate, fallbackDuration float64) ActivitySummaryFile {
+func buildActivitySummary(samples []CanonicalSample, ftpUsed *FTPCandidate, fallbackDuration float64, weightKG float64, warnings []string) ActivitySummaryFile {
 	power := make([]float64, 0, len(samples))
 	hr := make([]float64, 0, len(samples))
 	cad := make([]float64, 0, len(samples))
@@ -877,9 +989,19 @@ func buildActivitySummary(samples []CanonicalSample, ftpUsed *FTPCandidate, fall
 		AvgCadenceRPM: avgFloat(cad),
 		MaxCadenceRPM: maxFloat(cad),
 		TotalWorkKJ:   workKJ,
+		Warnings:      append([]string(nil), warnings...),
+	}
+	if weightKG > 0 {
+		summary.WeightKG = floatPtr(weightKG)
+		summary.AvgPowerWPerKG = floatPtr(summary.AvgPowerW / weightKG)
+		summary.NPWPerKG = floatPtr(summary.NPW / weightKG)
+		summary.MaxPowerWPerKG = floatPtr(summary.MaxPowerW / weightKG)
+	} else {
+		summary.Warnings = append(summary.Warnings, "weight_kg unavailable: W/kg metrics omitted")
 	}
 	if ftpUsed == nil || ftpUsed.FTPW <= 0 {
 		summary.Warnings = append(summary.Warnings, "ftp_w_used unavailable: IF and tss_like omitted")
+		summary.Warnings = dedupeStrings(summary.Warnings)
 		return summary
 	}
 
@@ -892,6 +1014,7 @@ func buildActivitySummary(samples []CanonicalSample, ftpUsed *FTPCandidate, fall
 	if ftpUsed.Source == "unknown" {
 		summary.Warnings = append(summary.Warnings, "ftp_w_used selected from override/unknown source")
 	}
+	summary.Warnings = dedupeStrings(summary.Warnings)
 	return summary
 }
 
@@ -997,19 +1120,22 @@ func writeJSON(path string, v any) error {
 }
 
 func writeCanonicalCSV(path string, samples []CanonicalSample) error {
-	f, err := os.Create(path)
+	out, err := marshalCanonicalCSV(samples)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	return os.WriteFile(path, out, 0o644)
+}
 
-	w := csv.NewWriter(f)
+func marshalCanonicalCSV(samples []CanonicalSample) ([]byte, error) {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
 	header := []string{
 		"ts_utc_iso", "elapsed_s", "power_w", "hr_bpm", "cadence_rpm", "speed_mps", "distance_m", "altitude_m", "temperature_c", "grade_pct",
 		"valid_power", "valid_hr", "valid_cadence", "file_offset", "record_index",
 	}
 	if err := w.Write(header); err != nil {
-		return err
+		return nil, err
 	}
 	for _, s := range samples {
 		row := []string{
@@ -1030,70 +1156,22 @@ func writeCanonicalCSV(path string, samples []CanonicalSample) error {
 			strconv.Itoa(s.RecordIndex),
 		}
 		if err := w.Write(row); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	w.Flush()
-	return w.Error()
-}
-
-type canonicalParquetRow struct {
-	TSUTCISO     string  `parquet:"name=ts_utc_iso, type=BYTE_ARRAY, convertedtype=UTF8, encoding=PLAIN_DICTIONARY"`
-	ElapsedS     float64 `parquet:"name=elapsed_s, type=DOUBLE"`
-	PowerW       float64 `parquet:"name=power_w, type=DOUBLE"`
-	HRBPM        float64 `parquet:"name=hr_bpm, type=DOUBLE"`
-	CadenceRPM   float64 `parquet:"name=cadence_rpm, type=DOUBLE"`
-	SpeedMPS     float64 `parquet:"name=speed_mps, type=DOUBLE"`
-	DistanceM    float64 `parquet:"name=distance_m, type=DOUBLE"`
-	AltitudeM    float64 `parquet:"name=altitude_m, type=DOUBLE"`
-	TemperatureC float64 `parquet:"name=temperature_c, type=DOUBLE"`
-	GradePct     float64 `parquet:"name=grade_pct, type=DOUBLE"`
-	ValidPower   bool    `parquet:"name=valid_power, type=BOOLEAN"`
-	ValidHR      bool    `parquet:"name=valid_hr, type=BOOLEAN"`
-	ValidCadence bool    `parquet:"name=valid_cadence, type=BOOLEAN"`
-	FileOffset   int64   `parquet:"name=file_offset, type=INT64"`
-	RecordIndex  int64   `parquet:"name=record_index, type=INT64"`
+	if err := w.Error(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 func writeCanonicalParquet(path string, samples []CanonicalSample) error {
-	fw, err := local.NewLocalFileWriter(path)
+	out, err := marshalCanonicalParquet(samples)
 	if err != nil {
 		return err
 	}
-	pw, err := writer.NewParquetWriter(fw, new(canonicalParquetRow), 4)
-	if err != nil {
-		return err
-	}
-	pw.CompressionType = parquet.CompressionCodec_SNAPPY
-	for _, s := range samples {
-		row := canonicalParquetRow{
-			TSUTCISO:     s.TSUTCISO,
-			ElapsedS:     s.ElapsedS,
-			PowerW:       valueOrNaN(s.PowerW),
-			HRBPM:        valueOrNaN(s.HRBPM),
-			CadenceRPM:   valueOrNaN(s.CadenceRPM),
-			SpeedMPS:     valueOrNaN(s.SpeedMPS),
-			DistanceM:    valueOrNaN(s.DistanceM),
-			AltitudeM:    valueOrNaN(s.AltitudeM),
-			TemperatureC: valueOrNaN(s.TemperatureC),
-			GradePct:     valueOrNaN(s.GradePct),
-			ValidPower:   s.ValidPower,
-			ValidHR:      s.ValidHR,
-			ValidCadence: s.ValidCadence,
-			FileOffset:   s.FileOffset,
-			RecordIndex:  int64(s.RecordIndex),
-		}
-		if err := pw.Write(row); err != nil {
-			_ = pw.WriteStop()
-			_ = fw.Close()
-			return err
-		}
-	}
-	if err := pw.WriteStop(); err != nil {
-		_ = fw.Close()
-		return err
-	}
-	return fw.Close()
+	return os.WriteFile(path, out, 0o644)
 }
 
 func valueOrNaN(v *float64) float64 {
@@ -1181,6 +1259,23 @@ func asString(v any) (string, bool) {
 func floatPtr(v float64) *float64 {
 	out := v
 	return &out
+}
+
+func dedupeStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
 }
 
 func formatFloat(v float64) string {

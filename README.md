@@ -1,9 +1,9 @@
 # fit-analyzer
 
-
-- analyzing `.fit` workout files and generating training notes
-- exporting FIT files losslessly to an LLM-friendly format
-- producing structured artifacts for deterministic LLM analysis
+- Analyze `.fit` workout files and generate training notes.
+- Export FIT files losslessly to an LLM-friendly format.
+- Produce deterministic artifacts for downstream LLM analysis.
+- Run analysis directly in-browser via GitHub Pages (WASM).
 
 ## Features
 
@@ -59,7 +59,7 @@ go run ./cmd/fitllmexport --ftp 223 --out-dir ./exports/my-workout /path/to/work
 Deterministic analyzer pipeline:
 
 ```bash
-go run ./cmd/fit_analyze --fit /path/to/workout.fit --out ./outputs/workout --ftp 223 --format parquet
+go run ./cmd/fit_analyze --fit /path/to/workout.fit --out ./outputs/workout --ftp 223 --weight 72.5 --format parquet
 ```
 
 `fit_analyze` outputs (additive to lossless JSONL):
@@ -69,6 +69,43 @@ go run ./cmd/fit_analyze --fit /path/to/workout.fit --out ./outputs/workout --ft
 - `workout_structure.json`
 - `lap_summary.json` (if laps exist)
 - `activity_summary.json`
+
+`activity_summary.json` also includes:
+
+- `weight_kg`
+- `avg_power_w_per_kg`
+- `np_w_per_kg`
+- `max_power_w_per_kg`
+- deterministic `warnings[]`
+
+## Browser UI (GitHub Pages)
+
+The UI is a static app in `web/` and runs analysis fully in browser with WASM.
+
+Features:
+
+- Drag/drop or browse `.fit` files.
+- Required inputs: FTP (W) and weight (kg).
+- Select `canonical_samples` format (`parquet` or `csv`).
+- Download one `.zip` containing all artifacts.
+
+Note:
+
+- Native CLI supports both `parquet` and `csv`.
+- Browser/WASM mode will emit a warning and fall back to `csv` if parquet encoding is unavailable in the runtime.
+
+Local web build:
+
+```bash
+./scripts/build-web.sh
+```
+
+This writes build artifacts to `web/dist/`.
+
+GitHub Pages deploy:
+
+- Workflow: `.github/workflows/pages.yml`
+- Published URL: `https://lucasjlepore.github.io/fit-analyzer/`
 
 ## Library API
 
@@ -94,4 +131,21 @@ if err != nil {
     // handle
 }
 fmt.Println(result.ManifestPath, result.RecordsPath)
+```
+
+In-memory pipeline API (used by WASM UI):
+
+```go
+res, err := pipeline.RunBytes(pipeline.BytesOptions{
+    SourceFileName: "workout.fit",
+    FitData:        fitBytes,
+    FTPOverride:    223,
+    WeightKG:       72.5,
+    Format:         "csv",
+    CopySource:     true,
+})
+if err != nil {
+    // handle
+}
+fmt.Println(len(res.Files), res.Warnings)
 ```

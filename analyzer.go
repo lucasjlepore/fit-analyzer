@@ -1,6 +1,7 @@
 package fitnotes
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"os"
@@ -17,6 +18,7 @@ const (
 // Config controls optional calculations that require athlete-specific inputs.
 type Config struct {
 	FTPWatts float64
+	WeightKG float64
 }
 
 // Analysis contains extracted metrics and generated notes for a FIT activity.
@@ -45,6 +47,10 @@ type Analysis struct {
 	MaxCadence        float64          `json:"max_cadence_rpm"`
 	FTPWatts          float64          `json:"ftp_watts"`
 	FTPSource         string           `json:"ftp_source"`
+	WeightKG          float64          `json:"weight_kg,omitempty"`
+	AvgPowerWPerKG    float64          `json:"avg_power_w_per_kg,omitempty"`
+	NPWPerKG          float64          `json:"np_w_per_kg,omitempty"`
+	MaxPowerWPerKG    float64          `json:"max_power_w_per_kg,omitempty"`
 	IntensityFactor   float64          `json:"intensity_factor"`
 	TrainingStress    float64          `json:"training_stress_score"`
 	Best20MinPower    float64          `json:"best_20min_power_watts"`
@@ -128,6 +134,23 @@ func AnalyzeFile(path string, cfg Config) (*Analysis, error) {
 	if err != nil {
 		return nil, fmt.Errorf("activity FIT expected: %w", err)
 	}
+	return analyzeActivity(path, activity, cfg)
+}
+
+// AnalyzeBytes decodes and analyzes an activity FIT payload directly from memory.
+func AnalyzeBytes(data []byte, sourceName string, cfg Config) (*Analysis, error) {
+	decoded, err := fit.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("decode FIT bytes: %w", err)
+	}
+	activity, err := decoded.Activity()
+	if err != nil {
+		return nil, fmt.Errorf("activity FIT expected: %w", err)
+	}
+	return analyzeActivity(sourceName, activity, cfg)
+}
+
+func analyzeActivity(path string, activity *fit.ActivityFile, cfg Config) (*Analysis, error) {
 	if len(activity.Sessions) == 0 {
 		return nil, fmt.Errorf("activity file has no session message")
 	}
@@ -240,6 +263,12 @@ func AnalyzeFile(path string, cfg Config) (*Analysis, error) {
 
 	if analysis.AvgPowerWatts > 0 {
 		analysis.VariabilityIndex = analysis.NormalizedPower / analysis.AvgPowerWatts
+	}
+	if cfg.WeightKG > 0 {
+		analysis.WeightKG = cfg.WeightKG
+		analysis.AvgPowerWPerKG = analysis.AvgPowerWatts / cfg.WeightKG
+		analysis.NPWPerKG = analysis.NormalizedPower / cfg.WeightKG
+		analysis.MaxPowerWPerKG = analysis.MaxPowerWatts / cfg.WeightKG
 	}
 	if analysis.FTPWatts > 0 && analysis.NormalizedPower > 0 {
 		analysis.IntensityFactor = analysis.NormalizedPower / analysis.FTPWatts

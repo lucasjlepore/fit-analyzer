@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>fit-analyzer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hero">
+        <h1>fit-analyzer</h1>
+        <p>Upload a FIT file, run full analysis in your browser, and download one zip artifact bundle.</p>
+      </header>
+
+      <section class="panel">
+        <h2>1) Select FIT File</h2>
+        <label id="drop-zone" class="drop-zone" for="file-input">
+          <input id="file-input" type="file" accept=".fit" />
+          <span id="drop-label">Drag and drop a .fit file, or click to browse</span>
+        </label>
+        <p id="file-meta" class="muted">No file selected.</p>
+      </section>
+
+      <section class="panel">
+        <h2>2) Analysis Inputs</h2>
+        <div class="grid">
+          <label>
+            FTP (watts)
+            <input id="ftp-input" type="number" min="1" step="1" required />
+          </label>
+          <label>
+            Weight (kg)
+            <input id="weight-input" type="number" min="1" step="0.1" required />
+          </label>
+          <label>
+            canonical_samples format
+            <select id="format-input">
+              <option value="parquet">parquet</option>
+              <option value="csv">csv</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>3) Run + Download</h2>
+        <div class="actions">
+          <button id="analyze-btn" disabled>Analyze</button>
+          <button id="download-btn" disabled>Download ZIP</button>
+        </div>
+        <p id="status" class="status">Idle.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Warnings</h2>
+        <ul id="warnings" class="warnings"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>Log</h2>
+        <pre id="log" class="log"></pre>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
