@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Build outputs
+bin/
+dist/
+*.out
+
+# Go tooling
+coverage.out
+
+# Generated exports and local data
+exports/
+*.fit
