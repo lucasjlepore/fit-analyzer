@@ -131,6 +131,7 @@ func TestRunBytesProducesArtifacts(t *testing.T) {
 		"messages_index.json",
 		"workout_structure.json",
 		"activity_summary.json",
+		"training_summary.md",
 		"canonical_samples.csv",
 		"source.fit",
 	}

@@ -154,6 +154,83 @@ func BuildTrainingNotes(a *Analysis) string {
 	return strings.TrimSpace(b.String())
 }
 
+// BuildTrainingSummaryMarkdown renders a concise markdown summary for copy/paste.
+func BuildTrainingSummaryMarkdown(a *Analysis) string {
+	if a == nil {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("# Training Ride Summary\n\n")
+
+	b.WriteString("## Session\n")
+	fmt.Fprintf(&b, "- Sport: %s", a.Sport)
+	if a.SubSport != "" && a.SubSport != "Generic" {
+		fmt.Fprintf(&b, " (%s)", a.SubSport)
+	}
+	b.WriteString("\n")
+	if !a.StartTime.IsZero() {
+		fmt.Fprintf(&b, "- Start: %s\n", a.StartTime.Format("2006-01-02 15:04:05 MST"))
+	}
+	fmt.Fprintf(&b, "- Duration: %s\n", formatDuration(a.ElapsedSeconds))
+	fmt.Fprintf(&b, "- Distance: %.1f km\n", a.DistanceMeters/1000.0)
+	fmt.Fprintf(&b, "- Elevation: +%.0f m / -%.0f m\n", a.ElevationGainM, a.ElevationLossM)
+	if a.WeightKG > 0 {
+		fmt.Fprintf(&b, "- Weight: %.1f kg\n", a.WeightKG)
+	}
+
+	b.WriteString("\n## Power And Load\n")
+	fmt.Fprintf(&b, "- Average power: %.0f W\n", a.AvgPowerWatts)
+	fmt.Fprintf(&b, "- Normalized power: %.0f W\n", a.NormalizedPower)
+	fmt.Fprintf(&b, "- Max power: %.0f W\n", a.MaxPowerWatts)
+	if a.WeightKG > 0 {
+		fmt.Fprintf(&b, "- Average W/kg: %.2f\n", a.AvgPowerWPerKG)
+		fmt.Fprintf(&b, "- NP W/kg: %.2f\n", a.NPWPerKG)
+	}
+	fmt.Fprintf(&b, "- Work: %.0f kJ\n", a.WorkKilojoules)
+	fmt.Fprintf(&b, "- Variability index: %.2f\n", a.VariabilityIndex)
+	if a.FTPWatts > 0 {
+		fmt.Fprintf(&b, "- FTP used: %.0f W (%s)\n", a.FTPWatts, a.FTPSource)
+		fmt.Fprintf(&b, "- Intensity factor: %.2f\n", a.IntensityFactor)
+		fmt.Fprintf(&b, "- TSS-like load: %.0f\n", a.TrainingStress)
+	}
+
+	b.WriteString("\n## Physiology\n")
+	fmt.Fprintf(&b, "- Heart rate: %.0f avg / %.0f max bpm\n", a.AvgHeartRate, a.MaxHeartRate)
+	fmt.Fprintf(&b, "- Cadence: %.0f avg / %.0f max rpm\n", a.AvgCadence, a.MaxCadence)
+	fmt.Fprintf(&b, "- Speed: %.1f avg / %.1f max km/h\n", mpsToKmh(a.AvgSpeedMps), mpsToKmh(a.MaxSpeedMps))
+
+	b.WriteString("\n## Intervals\n")
+	if a.Intervals.WorkCount > 0 {
+		fmt.Fprintf(&b, "- Work intervals detected: %d\n", a.Intervals.WorkCount)
+		fmt.Fprintf(&b, "- Average work interval: %.0f W for %s\n", a.Intervals.AvgWorkPowerWatts, formatDuration(a.Intervals.AvgWorkDurationSeconds))
+		if a.Intervals.RecoveryCount > 0 {
+			fmt.Fprintf(&b, "- Recovery intervals: %d at %.0f W for %s\n", a.Intervals.RecoveryCount, a.Intervals.AvgRecoveryPowerWatts, formatDuration(a.Intervals.AvgRecoveryDurationSeconds))
+		}
+		if a.Intervals.ActivationCount > 0 {
+			fmt.Fprintf(&b, "- Openers / activation efforts: %d\n", a.Intervals.ActivationCount)
+		}
+		fmt.Fprintf(&b, "- Trend from first to last work rep: power %+.1f%%, cadence %+.1f%%, HR %+0.f bpm\n", a.Intervals.WorkPowerChangePct, a.Intervals.WorkCadenceChangePct, a.Intervals.WorkHeartRateChange)
+	} else {
+		b.WriteString("- No repeating hard interval structure was confidently detected.\n")
+	}
+
+	if a.WorkoutStructure.CanonicalLabel != "" {
+		b.WriteString("\n## Workout Structure\n")
+		fmt.Fprintf(&b, "- Label: %s\n", a.WorkoutStructure.CanonicalLabel)
+		fmt.Fprintf(&b, "- Confidence: %.0f%%\n", a.WorkoutStructure.Confidence*100.0)
+		if a.WorkoutStructure.MainSet != nil {
+			fmt.Fprintf(&b, "- Main set: %s\n", a.WorkoutStructure.MainSet.Prescription)
+		}
+	}
+
+	b.WriteString("\n## Coaching Takeaways\n")
+	fmt.Fprintf(&b, "- %s\n", coachingAssessment(a))
+	fmt.Fprintf(&b, "- %s\n", nextSessionSuggestion(a))
+
+	return strings.TrimSpace(b.String())
+}
+
 func coachingAssessment(a *Analysis) string {
 	if a == nil {
 		return "No assessment available."

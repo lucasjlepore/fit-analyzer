@@ -203,6 +203,11 @@ func RunBytes(opts BytesOptions) (*BytesResult, error) {
 	}
 	files["activity_summary.json"] = activityJSON
 
+	summaryMD := fitnotes.BuildTrainingSummaryMarkdown(analysis)
+	if summaryMD != "" {
+		files["training_summary.md"] = append([]byte(summaryMD), '\n')
+	}
+
 	recordsJSONL, err := llmexport.MarshalJSONL(records)
 	if err != nil {
 		return nil, fmt.Errorf("marshal records jsonl: %w", err)

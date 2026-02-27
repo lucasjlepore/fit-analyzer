@@ -75,10 +75,11 @@ func analyzeFit(_ js.Value, args []js.Value) any {
 	sort.Strings(fileNames)
 
 	return map[string]any{
-		"ok":       true,
-		"zip":      payload,
-		"warnings": stringsToAny(result.Warnings),
-		"files":    stringsToAny(fileNames),
+		"ok":         true,
+		"zip":        payload,
+		"summary_md": summaryString(result.Files["training_summary.md"]),
+		"warnings":   stringsToAny(result.Warnings),
+		"files":      stringsToAny(fileNames),
 	}
 }
 
@@ -145,4 +146,11 @@ func stringsToAny(values []string) []any {
 		out[i] = v
 	}
 	return out
+}
+
+func summaryString(content []byte) string {
+	if len(content) == 0 {
+		return ""
+	}
+	return string(content)
 }

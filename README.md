@@ -86,13 +86,14 @@ Features:
 
 - Drag/drop or browse `.fit` files.
 - Required inputs: FTP (W) and weight (kg).
-- Select `canonical_samples` format (`parquet` or `csv`).
+- Browser UI exports `canonical_samples` as CSV.
+- Displays a markdown ride summary for copy/paste into notes or an LLM.
 - Download one `.zip` containing all artifacts.
 
 Note:
 
 - Native CLI supports both `parquet` and `csv`.
-- Browser/WASM mode will emit a warning and fall back to `csv` if parquet encoding is unavailable in the runtime.
+- Browser/WASM mode uses CSV directly for compatibility.
 
 Local web build:
 

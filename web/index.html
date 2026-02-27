@@ -33,14 +33,8 @@
             Weight (kg)
             <input id="weight-input" type="number" min="1" step="0.1" required />
           </label>
-          <label>
-            canonical_samples format
-            <select id="format-input">
-              <option value="parquet">parquet</option>
-              <option value="csv">csv</option>
-            </select>
-          </label>
         </div>
+        <p class="muted"><code>canonical_samples</code> is exported as CSV in the browser UI.</p>
       </section>
 
       <section class="panel">
@@ -48,18 +42,14 @@
         <div class="actions">
           <button id="analyze-btn" disabled>Analyze</button>
           <button id="download-btn" disabled>Download ZIP</button>
+          <button id="copy-btn" disabled>Copy Summary</button>
         </div>
         <p id="status" class="status">Idle.</p>
       </section>
 
       <section class="panel">
-        <h2>Warnings</h2>
-        <ul id="warnings" class="warnings"></ul>
-      </section>
-
-      <section class="panel">
-        <h2>Log</h2>
-        <pre id="log" class="log"></pre>
+        <h2>4) Markdown Summary</h2>
+        <textarea id="summary-output" class="summary-output" readonly placeholder="Analyze a ride to generate a markdown summary you can copy into your training log or LLM chat."></textarea>
       </section>
     </main>
 

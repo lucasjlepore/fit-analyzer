@@ -47,6 +47,7 @@ self.onmessage = async (event) => {
       {
         id,
         ok: true,
+        summary: typeof result.summary_md === "string" ? result.summary_md : "",
         warnings: Array.isArray(result.warnings) ? result.warnings : [],
         files: Array.isArray(result.files) ? result.files : [],
         zipBuffer: zipCopy.buffer,
