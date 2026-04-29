@@ -1,4 +1,4 @@
-module fit-analyzer
+module github.com/lucasjlepore/fit-analyzer
 
 go 1.25.3
 

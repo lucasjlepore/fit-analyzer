@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	fitnotes "fit-analyzer"
+	"github.com/lucasjlepore/fit-analyzer/analyzer"
 )
 
 func main() {
@@ -27,7 +27,7 @@ func main() {
 	}
 
 	filePath := flag.Arg(0)
-	analysis, err := fitnotes.AnalyzeFile(filePath, fitnotes.Config{FTPWatts: *ftp})
+	analysis, err := analyzer.AnalyzeFile(filePath, analyzer.Config{FTPWatts: *ftp})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "analysis failed: %v\n", err)
 		os.Exit(1)

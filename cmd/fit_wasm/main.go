@@ -3,14 +3,9 @@
 package main
 
 import (
-	"archive/zip"
-	"bytes"
-	"fmt"
-	"sort"
 	"syscall/js"
-	"time"
 
-	"fit-analyzer/pipeline"
+	"github.com/lucasjlepore/fit-analyzer/webapp"
 )
 
 func main() {
@@ -42,76 +37,30 @@ func analyzeFit(_ js.Value, args []js.Value) any {
 		}
 	}
 
-	opts := pipeline.BytesOptions{
+	result, err := webapp.AnalyzeBytes(webapp.AnalyzeOptions{
 		SourceFileName: getString(optsArg, "source_file_name", "input.fit"),
 		FitData:        fileBytes,
-		FTPOverride:    getFloat(optsArg, "ftp_w"),
+		FTPWatts:       getFloat(optsArg, "ftp_w"),
 		WeightKG:       getFloat(optsArg, "weight_kg"),
-		Format:         getString(optsArg, "format", "parquet"),
-		CopySource:     true,
-	}
-	result, err := pipeline.RunBytes(opts)
+		Format:         getString(optsArg, "format", "csv"),
+	})
 	if err != nil {
 		return map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		}
 	}
-
-	zipBytes, err := zipArtifacts(result.Files)
-	if err != nil {
-		return map[string]any{
-			"ok":    false,
-			"error": fmt.Sprintf("create zip: %v", err),
-		}
-	}
-	payload := js.Global().Get("Uint8Array").New(len(zipBytes))
-	js.CopyBytesToJS(payload, zipBytes)
-
-	fileNames := make([]string, 0, len(result.Files))
-	for name := range result.Files {
-		fileNames = append(fileNames, name)
-	}
-	sort.Strings(fileNames)
+	payload := js.Global().Get("Uint8Array").New(len(result.Zip))
+	js.CopyBytesToJS(payload, result.Zip)
 
 	return map[string]any{
-		"ok":         true,
-		"zip":        payload,
-		"summary_md": summaryString(result.Files["training_summary.md"]),
-		"warnings":   stringsToAny(result.Warnings),
-		"files":      stringsToAny(fileNames),
+		"ok":            true,
+		"zip":           payload,
+		"summary_md":    result.SummaryMarkdown,
+		"analysis_json": summaryString(result.Files["analysis.json"]),
+		"warnings":      stringsToAny(result.Warnings),
+		"files":         stringsToAny(result.ArtifactNames),
 	}
-}
-
-func zipArtifacts(files map[string][]byte) ([]byte, error) {
-	names := make([]string, 0, len(files))
-	for name := range files {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
-	fixedTime := time.Unix(0, 0).UTC()
-
-	for _, name := range names {
-		h := &zip.FileHeader{
-			Name:   name,
-			Method: zip.Deflate,
-		}
-		h.SetModTime(fixedTime)
-		w, err := zw.CreateHeader(h)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := w.Write(files[name]); err != nil {
-			return nil, err
-		}
-	}
-	if err := zw.Close(); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
 }
 
 func getString(v js.Value, key, fallback string) string {

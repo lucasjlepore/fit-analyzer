@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"fit-analyzer/pipeline"
+	"github.com/lucasjlepore/fit-analyzer/pipeline"
 )
 
 func main() {

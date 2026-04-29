@@ -592,10 +592,16 @@ func decodeSingleValue(raw []byte, bt baseType, arch binary.ByteOrder) (any, boo
 	case baseFloat32:
 		bits := arch.Uint32(raw)
 		v := float64(math.Float32frombits(bits))
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return nonFiniteFloatLabel(v), bits == 0xFFFFFFFF
+		}
 		return v, bits == 0xFFFFFFFF
 	case baseFloat64:
 		bits := arch.Uint64(raw)
 		v := math.Float64frombits(bits)
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return nonFiniteFloatLabel(v), bits == 0xFFFFFFFFFFFFFFFF
+		}
 		return v, bits == 0xFFFFFFFFFFFFFFFF
 	case baseUint8z:
 		v := raw[0]
@@ -800,9 +806,15 @@ func scaledOrRawFloat(f FieldValue) *float64 {
 func floatPointer(v any) *float64 {
 	switch x := v.(type) {
 	case float64:
+		if math.IsNaN(x) || math.IsInf(x, 0) {
+			return nil
+		}
 		out := x
 		return &out
 	case float32:
+		if math.IsNaN(float64(x)) || math.IsInf(float64(x), 0) {
+			return nil
+		}
 		out := float64(x)
 		return &out
 	case int:
@@ -835,6 +847,16 @@ func floatPointer(v any) *float64 {
 	default:
 		return nil
 	}
+}
+
+func nonFiniteFloatLabel(v float64) string {
+	if math.IsNaN(v) {
+		return "NaN"
+	}
+	if math.IsInf(v, 1) {
+		return "Infinity"
+	}
+	return "-Infinity"
 }
 
 func asUint32(v any) (uint32, bool) {

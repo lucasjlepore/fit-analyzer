@@ -1,8 +1,9 @@
-package fitnotes
+package analyzer
 
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"sort"
@@ -125,32 +126,32 @@ func AnalyzeFile(path string, cfg Config) (*Analysis, error) {
 	}
 	defer f.Close()
 
-	decoded, err := fit.Decode(f)
-	if err != nil {
-		return nil, fmt.Errorf("decode FIT file: %w", err)
-	}
-
-	activity, err := decoded.Activity()
-	if err != nil {
-		return nil, fmt.Errorf("activity FIT expected: %w", err)
-	}
-	return analyzeActivity(path, activity, cfg)
+	return Analyze(f, path, cfg)
 }
 
 // AnalyzeBytes decodes and analyzes an activity FIT payload directly from memory.
 func AnalyzeBytes(data []byte, sourceName string, cfg Config) (*Analysis, error) {
-	decoded, err := fit.Decode(bytes.NewReader(data))
+	return Analyze(bytes.NewReader(data), sourceName, cfg)
+}
+
+// Analyze decodes and analyzes an activity FIT payload from any reader.
+func Analyze(r io.Reader, sourceName string, cfg Config) (*Analysis, error) {
+	decoded, err := fit.Decode(r)
 	if err != nil {
-		return nil, fmt.Errorf("decode FIT bytes: %w", err)
+		return nil, fmt.Errorf("decode FIT payload: %w", err)
 	}
 	activity, err := decoded.Activity()
 	if err != nil {
 		return nil, fmt.Errorf("activity FIT expected: %w", err)
 	}
-	return analyzeActivity(sourceName, activity, cfg)
+	return AnalyzeActivity(activity, sourceName, cfg)
 }
 
-func analyzeActivity(path string, activity *fit.ActivityFile, cfg Config) (*Analysis, error) {
+// AnalyzeActivity derives metrics from an already-decoded activity file.
+func AnalyzeActivity(activity *fit.ActivityFile, sourceName string, cfg Config) (*Analysis, error) {
+	if activity == nil {
+		return nil, fmt.Errorf("activity is required")
+	}
 	if len(activity.Sessions) == 0 {
 		return nil, fmt.Errorf("activity file has no session message")
 	}
@@ -159,7 +160,7 @@ func analyzeActivity(path string, activity *fit.ActivityFile, cfg Config) (*Anal
 	session := activity.Sessions[0]
 
 	analysis := &Analysis{
-		FilePath: path,
+		FilePath: sourceName,
 		Sport:    fmt.Sprint(session.Sport),
 		SubSport: fmt.Sprint(session.SubSport),
 	}

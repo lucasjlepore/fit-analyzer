@@ -1,6 +1,10 @@
 package pipeline
 
-import "time"
+import (
+	"time"
+
+	"github.com/lucasjlepore/fit-analyzer/analyzer"
+)
 
 // Options configures the fit_analyze pipeline.
 type Options struct {
@@ -26,6 +30,7 @@ type BytesOptions struct {
 // Result returns generated output paths.
 type Result struct {
 	OutputDir            string   `json:"output_dir"`
+	AnalysisPath         string   `json:"analysis_path,omitempty"`
 	ManifestPath         string   `json:"manifest_path"`
 	RecordsPath          string   `json:"records_path"`
 	SourceCopyPath       string   `json:"source_copy_path,omitempty"`
@@ -39,8 +44,9 @@ type Result struct {
 
 // BytesResult returns generated in-memory artifact payloads.
 type BytesResult struct {
-	Files    map[string][]byte `json:"files"`
-	Warnings []string          `json:"warnings,omitempty"`
+	Files    map[string][]byte  `json:"files"`
+	Analysis *analyzer.Analysis `json:"analysis,omitempty"`
+	Warnings []string           `json:"warnings,omitempty"`
 }
 
 // CanonicalSample represents one global message 20 sample row.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,6 +95,26 @@ func TestExportFileWritesBundle(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(string(recordsData)), "\n")
 	if len(lines) != result.RecordCount {
 		t.Fatalf("records line count mismatch: %d != %d", len(lines), result.RecordCount)
+	}
+}
+
+func TestDecodeSingleValueFormatsNonFiniteFloats(t *testing.T) {
+	v32, invalid32 := decodeSingleValue([]byte{0x00, 0x00, 0xC0, 0x7F}, baseFloat32, binary.LittleEndian)
+	if invalid32 {
+		t.Fatal("expected quiet NaN payload to be preserved, not flagged as FIT invalid sentinel")
+	}
+	if got, ok := v32.(string); !ok || got != "NaN" {
+		t.Fatalf("unexpected float32 NaN representation: %#v", v32)
+	}
+
+	var posInf [8]byte
+	binary.LittleEndian.PutUint64(posInf[:], math.Float64bits(math.Inf(1)))
+	v64, invalid64 := decodeSingleValue(posInf[:], baseFloat64, binary.LittleEndian)
+	if invalid64 {
+		t.Fatal("expected +Inf payload to be preserved, not flagged as FIT invalid sentinel")
+	}
+	if got, ok := v64.(string); !ok || got != "Infinity" {
+		t.Fatalf("unexpected float64 +Inf representation: %#v", v64)
 	}
 }
 

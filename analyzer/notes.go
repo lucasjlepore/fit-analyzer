@@ -1,4 +1,4 @@
-package fitnotes
+package analyzer
 
 import (
 	"fmt"

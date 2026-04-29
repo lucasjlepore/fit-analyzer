@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	fitnotes "fit-analyzer"
+	"github.com/lucasjlepore/fit-analyzer/analyzer"
 	"github.com/tormoder/fit"
 )
 
@@ -65,7 +65,7 @@ func ExportFile(inputPath, outputDir string, opts ExportOptions) (*ExportResult,
 	workoutStructurePath := ""
 	analysisError := ""
 	if opts.IncludeAnalysis {
-		analysis, err := fitnotes.AnalyzeFile(inputPath, fitnotes.Config{FTPWatts: opts.FTPWatts})
+		analysis, err := analyzer.AnalyzeFile(inputPath, analyzer.Config{FTPWatts: opts.FTPWatts})
 		if err != nil {
 			analysisError = err.Error()
 		} else {

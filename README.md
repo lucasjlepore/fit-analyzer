@@ -85,7 +85,7 @@ The UI is a static app in `web/` and runs analysis fully in browser with WASM.
 Features:
 
 - Drag/drop or browse `.fit` files.
-- Required inputs: FTP (W) and weight (kg).
+- Optional inputs: FTP (W) and weight (kg).
 - Browser UI exports `canonical_samples` as CSV.
 - Displays a markdown ride summary for copy/paste into notes or an LLM.
 - Download one `.zip` containing all artifacts.

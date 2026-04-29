@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/lucasjlepore/fit-analyzer/analyzer"
 )
 
 func TestRunOnKnownZwiftFIT(t *testing.T) {
@@ -138,6 +140,39 @@ func TestRunBytesProducesArtifacts(t *testing.T) {
 	for _, name := range required {
 		if _, ok := res.Files[name]; !ok {
 			t.Fatalf("missing artifact %s", name)
+		}
+	}
+}
+
+func TestCollectFTPCandidatesIncludesAnalyzerEstimate(t *testing.T) {
+	candidates := collectFTPCandidates(nil, nil, &analyzer.Analysis{
+		FTPWatts:  247,
+		FTPSource: "estimated",
+	}, 0)
+	if len(candidates) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(candidates))
+	}
+	if candidates[0].Source != "estimated" {
+		t.Fatalf("unexpected source: %q", candidates[0].Source)
+	}
+	if candidates[0].Message != "analyzer.best_20min_estimate" {
+		t.Fatalf("unexpected message: %q", candidates[0].Message)
+	}
+	if candidates[0].FTPW != 247 {
+		t.Fatalf("unexpected ftp: %v", candidates[0].FTPW)
+	}
+}
+
+func TestBuildActivitySummaryDoesNotWarnWhenFTPIsOmitted(t *testing.T) {
+	summary := buildActivitySummary([]CanonicalSample{{
+		ElapsedS:   0,
+		PowerW:     floatPtr(200),
+		ValidPower: true,
+	}}, nil, 3600, 0, nil)
+
+	for _, warning := range summary.Warnings {
+		if warning == "ftp_w_used unavailable: IF and tss_like omitted" {
+			t.Fatalf("unexpected ftp omission warning: %q", warning)
 		}
 	}
 }

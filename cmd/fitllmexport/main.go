@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"fit-analyzer/llmexport"
+	"github.com/lucasjlepore/fit-analyzer/llmexport"
 )
 
 func main() {

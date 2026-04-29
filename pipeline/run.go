@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	fitnotes "fit-analyzer"
-	"fit-analyzer/llmexport"
+	"github.com/lucasjlepore/fit-analyzer/analyzer"
+	"github.com/lucasjlepore/fit-analyzer/llmexport"
 	"github.com/tormoder/fit"
 )
 
@@ -54,6 +54,7 @@ func Run(opts Options) (*Result, error) {
 	canonicalPath := filepath.Join(opts.OutDir, canonicalName)
 	result := &Result{
 		OutputDir:            opts.OutDir,
+		AnalysisPath:         filepath.Join(opts.OutDir, "analysis.json"),
 		ManifestPath:         filepath.Join(opts.OutDir, "manifest.json"),
 		RecordsPath:          filepath.Join(opts.OutDir, "records.jsonl"),
 		CanonicalSamplesPath: canonicalPath,
@@ -64,6 +65,9 @@ func Run(opts Options) (*Result, error) {
 	}
 	if _, ok := bytesResult.Files["lap_summary.json"]; ok {
 		result.LapSummaryPath = filepath.Join(opts.OutDir, "lap_summary.json")
+	}
+	if _, ok := bytesResult.Files["analysis.json"]; !ok {
+		result.AnalysisPath = ""
 	}
 	if _, ok := bytesResult.Files["source.fit"]; ok {
 		result.SourceCopyPath = filepath.Join(opts.OutDir, "source.fit")
@@ -100,11 +104,11 @@ func RunBytes(opts BytesOptions) (*BytesResult, error) {
 	if !strings.HasSuffix(strings.ToLower(sourceName), ".fit") {
 		warnings = append(warnings, "input filename does not end with .fit")
 	}
-	if opts.FTPOverride <= 0 {
-		warnings = append(warnings, "ftp override not provided; ftp_w_used will be inferred from FIT metadata when possible")
+	if opts.FTPOverride < 0 {
+		warnings = append(warnings, "ftp override must be non-negative; ignoring provided value")
 	}
-	if opts.WeightKG <= 0 {
-		warnings = append(warnings, "weight_kg missing or invalid; W/kg metrics omitted")
+	if opts.WeightKG < 0 {
+		warnings = append(warnings, "weight_kg must be non-negative; W/kg metrics omitted")
 	}
 
 	bundle, err := llmexport.ParseBytes(opts.FitData)
@@ -149,7 +153,7 @@ func RunBytes(opts BytesOptions) (*BytesResult, error) {
 	}
 	files["messages_index.json"] = indexJSON
 
-	analysis, err := fitnotes.AnalyzeBytes(opts.FitData, sourceName, fitnotes.Config{
+	analysis, err := analyzer.AnalyzeBytes(opts.FitData, sourceName, analyzer.Config{
 		FTPWatts: opts.FTPOverride,
 		WeightKG: opts.WeightKG,
 	})
@@ -160,12 +164,14 @@ func RunBytes(opts BytesOptions) (*BytesResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode activity: %w", err)
 	}
-
-	ftpCandidates := collectFTPCandidates(records, activity, opts.FTPOverride)
-	ftpUsed := chooseFTPCandidate(ftpCandidates)
-	if ftpUsed == nil {
-		warnings = append(warnings, "unable to determine ftp_w_used from metadata or override")
+	analysisJSON, err := llmexport.MarshalJSON(analysis)
+	if err != nil {
+		return nil, fmt.Errorf("marshal analysis: %w", err)
 	}
+	files["analysis.json"] = analysisJSON
+
+	ftpCandidates := collectFTPCandidates(records, activity, analysis, opts.FTPOverride)
+	ftpUsed := chooseFTPCandidate(ftpCandidates)
 
 	lapSummary := buildLapSummary(activity, samples)
 	if len(lapSummary.Laps) > 0 {
@@ -203,7 +209,7 @@ func RunBytes(opts BytesOptions) (*BytesResult, error) {
 	}
 	files["activity_summary.json"] = activityJSON
 
-	summaryMD := fitnotes.BuildTrainingSummaryMarkdown(analysis)
+	summaryMD := analyzer.BuildTrainingSummaryMarkdown(analysis)
 	if summaryMD != "" {
 		files["training_summary.md"] = append([]byte(summaryMD), '\n')
 	}
@@ -230,6 +236,7 @@ func RunBytes(opts BytesOptions) (*BytesResult, error) {
 
 	return &BytesResult{
 		Files:    files,
+		Analysis: analysis,
 		Warnings: dedupeStrings(warnings),
 	}, nil
 }
@@ -418,9 +425,15 @@ func scaledOrDecodedFloat(f llmexport.FieldValue) *float64 {
 func floatAny(v any) *float64 {
 	switch x := v.(type) {
 	case float64:
+		if math.IsNaN(x) || math.IsInf(x, 0) {
+			return nil
+		}
 		out := x
 		return &out
 	case float32:
+		if math.IsNaN(float64(x)) || math.IsInf(float64(x), 0) {
+			return nil
+		}
 		out := float64(x)
 		return &out
 	case int:
@@ -516,7 +529,7 @@ func buildMessagesIndex(records []llmexport.RecordEnvelope) MessageIndexFile {
 	}
 }
 
-func collectFTPCandidates(records []llmexport.RecordEnvelope, activity *fit.ActivityFile, ftpOverride float64) []FTPCandidate {
+func collectFTPCandidates(records []llmexport.RecordEnvelope, activity *fit.ActivityFile, analysis *analyzer.Analysis, ftpOverride float64) []FTPCandidate {
 	candidates := make([]FTPCandidate, 0, 6)
 	add := func(c FTPCandidate) {
 		if c.FTPW <= 0 || c.FTPW > 600 {
@@ -594,6 +607,33 @@ func collectFTPCandidates(records []llmexport.RecordEnvelope, activity *fit.Acti
 			Reason:     "CLI override provided",
 		})
 	}
+	if analysis != nil && analysis.FTPWatts > 0 {
+		candidate := FTPCandidate{
+			FTPW:       analysis.FTPWatts,
+			Source:     "analyzer",
+			Message:    "analyzer.ftp_watts",
+			Confidence: 0.60,
+			Reason:     "Analyzer supplied FTP candidate",
+		}
+		switch analysis.FTPSource {
+		case "estimated":
+			candidate.Source = "estimated"
+			candidate.Message = "analyzer.best_20min_estimate"
+			candidate.Reason = "Analyzer estimated FTP from best 20-minute power"
+		case "input":
+			if ftpOverride > 0 {
+				candidate.Source = "unknown"
+				candidate.Message = "analyzer.input_ftp"
+				candidate.Confidence = 0.55
+				candidate.Reason = "Analyzer used CLI override"
+			}
+		case "":
+		default:
+			candidate.Source = analysis.FTPSource
+			candidate.Message = "analyzer." + analysis.FTPSource
+		}
+		add(candidate)
+	}
 
 	// Deterministic de-dup by source+message+rounded ftp.
 	seen := make(map[string]struct{})
@@ -630,6 +670,8 @@ func ftpPriority(source string) int {
 		return 3
 	case "user_profile":
 		return 2
+	case "estimated":
+		return 1
 	default:
 		return 1
 	}
@@ -714,7 +756,7 @@ func buildLapSummary(activity *fit.ActivityFile, samples []CanonicalSample) LapS
 	return LapSummaryFile{Laps: laps}
 }
 
-func buildWorkoutSteps(records []llmexport.RecordEnvelope, analysis *fitnotes.Analysis, samples []CanonicalSample, lapSummary LapSummaryFile, ftpUsed *FTPCandidate) []WorkoutStep {
+func buildWorkoutSteps(records []llmexport.RecordEnvelope, analysis *analyzer.Analysis, samples []CanonicalSample, lapSummary LapSummaryFile, ftpUsed *FTPCandidate) []WorkoutStep {
 	if steps := buildWorkoutStepsFromWorkoutMessages(records, samples, ftpUsed); len(steps) > 0 {
 		return steps
 	}
@@ -851,7 +893,7 @@ func nonZeroOr(primary, fallback float64) float64 {
 	return fallback
 }
 
-func buildWorkoutStepsFromLaps(analysis *fitnotes.Analysis, lapSummary LapSummaryFile, ftpUsed *FTPCandidate) []WorkoutStep {
+func buildWorkoutStepsFromLaps(analysis *analyzer.Analysis, lapSummary LapSummaryFile, ftpUsed *FTPCandidate) []WorkoutStep {
 	steps := make([]WorkoutStep, 0, len(lapSummary.Laps))
 	for i, lap := range lapSummary.Laps {
 		label := analysis.Laps[i].Label
@@ -1001,11 +1043,8 @@ func buildActivitySummary(samples []CanonicalSample, ftpUsed *FTPCandidate, fall
 		summary.AvgPowerWPerKG = floatPtr(summary.AvgPowerW / weightKG)
 		summary.NPWPerKG = floatPtr(summary.NPW / weightKG)
 		summary.MaxPowerWPerKG = floatPtr(summary.MaxPowerW / weightKG)
-	} else {
-		summary.Warnings = append(summary.Warnings, "weight_kg unavailable: W/kg metrics omitted")
 	}
 	if ftpUsed == nil || ftpUsed.FTPW <= 0 {
-		summary.Warnings = append(summary.Warnings, "ftp_w_used unavailable: IF and tss_like omitted")
 		summary.Warnings = dedupeStrings(summary.Warnings)
 		return summary
 	}
