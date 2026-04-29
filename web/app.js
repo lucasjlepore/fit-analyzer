@@ -19,10 +19,42 @@ const warningsList = document.getElementById("warnings-list");
 const artifactList = document.getElementById("artifact-list");
 const summaryOutput = document.getElementById("summary-output");
 
+const courseDropZone = document.getElementById("course-drop-zone");
+const courseDropLabel = document.getElementById("course-drop-label");
+const courseFileInput = document.getElementById("course-file-input");
+const courseFileMeta = document.getElementById("course-file-meta");
+const raceFTPInput = document.getElementById("race-ftp-input");
+const raceWeightInput = document.getElementById("race-weight-input");
+const carbInput = document.getElementById("carb-input");
+const bottleInput = document.getElementById("bottle-input");
+const bottlesInput = document.getElementById("bottles-input");
+const caffeineInput = document.getElementById("caffeine-input");
+const strategyInput = document.getElementById("strategy-input");
+const racePlanBtn = document.getElementById("race-plan-btn");
+const raceDownloadBtn = document.getElementById("race-download-btn");
+const raceCopyBtn = document.getElementById("race-copy-btn");
+const raceStatusEl = document.getElementById("race-status");
+const raceResultsShell = document.getElementById("race-results-shell");
+const courseTitle = document.getElementById("course-title");
+const courseMeta = document.getElementById("course-meta");
+const raceMetricGrid = document.getElementById("race-metric-grid");
+const climbOutput = document.getElementById("climb-output");
+const pressureOutput = document.getElementById("pressure-output");
+const fuelOutput = document.getElementById("fuel-output");
+const sectorOutput = document.getElementById("sector-output");
+const raceWarningsList = document.getElementById("race-warnings-list");
+const raceArtifactList = document.getElementById("race-artifact-list");
+const raceSummaryOutput = document.getElementById("race-summary-output");
+
 const worker = new Worker("./worker.js");
 let selectedFile = null;
 let zipBlob = null;
 let zipName = "fit-analysis.zip";
+
+let selectedCourseFile = null;
+let raceZipBlob = null;
+let raceZipName = "race-plan.zip";
+
 let requestCounter = 0;
 
 function positiveNumber(input) {
@@ -30,60 +62,19 @@ function positiveNumber(input) {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-function setStatus(message, tone = "") {
-  statusEl.textContent = message;
-  statusEl.dataset.tone = tone;
+function nonNegativeInteger(input) {
+  const value = Number(input.value);
+  return Number.isFinite(value) && value >= 0 ? Math.round(value) : 0;
 }
 
-function setSummary(value) {
-  summaryOutput.value = value || "";
-  copyBtn.disabled = !summaryOutput.value;
+function setStatus(element, message, tone = "") {
+  element.textContent = message;
+  element.dataset.tone = tone;
 }
 
-function resetResults() {
-  renderAnalysis(null);
-  renderWarnings([]);
-  renderArtifacts([]);
-  setSummary("");
-}
-
-function validateInputs() {
-  const hasFile = !!selectedFile;
-  analyzeBtn.disabled = !hasFile;
-
-  if (!hasFile) {
-    setStatus("Idle. Select a .fit file.");
-    return;
-  }
-
-  const ftp = positiveNumber(ftpInput);
-  const weight = positiveNumber(weightInput);
-  const parts = [];
-  if (ftp > 0) {
-    parts.push(`FTP ${Math.round(ftp)} W`);
-  }
-  if (weight > 0) {
-    parts.push(`weight ${weight.toFixed(1)} kg`);
-  }
-  setStatus(parts.length > 0 ? `Ready to analyze with ${parts.join(" and ")}.` : "Ready to analyze. FTP and weight are optional.");
-}
-
-function setSelectedFile(file) {
-  selectedFile = file || null;
-  zipBlob = null;
-  downloadBtn.disabled = true;
-  resetResults();
-
-  if (!selectedFile) {
-    dropLabel.textContent = "Drag and drop a .fit file, or click to browse";
-    fileMeta.textContent = "No file selected.";
-    validateInputs();
-    return;
-  }
-
-  dropLabel.textContent = selectedFile.name;
-  fileMeta.textContent = `Selected: ${selectedFile.name} (${(selectedFile.size / 1024).toFixed(1)} KB)`;
-  validateInputs();
+function setSummary(textarea, button, value) {
+  textarea.value = value || "";
+  button.disabled = !textarea.value;
 }
 
 function cleanLabel(value) {
@@ -171,6 +162,91 @@ function createMetricCard(value, label) {
   return card;
 }
 
+function createReadoutCard(value, label) {
+  const card = document.createElement("article");
+  card.className = "readout-card";
+
+  const strong = document.createElement("strong");
+  strong.textContent = value;
+  card.appendChild(strong);
+
+  const span = document.createElement("span");
+  span.className = "metric-label";
+  span.textContent = label;
+  card.appendChild(span);
+
+  return card;
+}
+
+function createInfoCard(title, meta, body, pillText = "") {
+  const card = document.createElement("article");
+  card.className = "structure-block";
+
+  const header = document.createElement("div");
+  header.className = "structure-block-header";
+
+  const strong = document.createElement("strong");
+  strong.textContent = title;
+  header.appendChild(strong);
+
+  if (pillText) {
+    const pill = document.createElement("span");
+    pill.className = "pill";
+    pill.textContent = pillText;
+    header.appendChild(pill);
+  }
+  card.appendChild(header);
+
+  if (meta) {
+    const metaEl = document.createElement("div");
+    metaEl.className = "block-meta";
+    metaEl.textContent = meta;
+    card.appendChild(metaEl);
+  }
+
+  if (body) {
+    const bodyEl = document.createElement("div");
+    bodyEl.className = "block-meta";
+    bodyEl.textContent = body;
+    card.appendChild(bodyEl);
+  }
+
+  return card;
+}
+
+function renderStringList(listEl, items, emptyMessage) {
+  listEl.replaceChildren();
+  listEl.className = "list";
+
+  if (!items || items.length === 0) {
+    listEl.classList.add("muted-list");
+    const item = document.createElement("li");
+    item.textContent = emptyMessage;
+    listEl.appendChild(item);
+    return;
+  }
+
+  items.forEach((value) => {
+    const item = document.createElement("li");
+    item.textContent = value;
+    listEl.appendChild(item);
+  });
+}
+
+function resetStack(container, message) {
+  container.replaceChildren();
+  container.className = "stack empty-state";
+  container.textContent = message;
+}
+
+function renderArtifacts(listEl, files, emptyMessage) {
+  renderStringList(listEl, files, emptyMessage);
+}
+
+function renderWarnings(listEl, warnings) {
+  renderStringList(listEl, warnings, "No warnings.");
+}
+
 function renderMetricGrid(analysis) {
   metricGrid.replaceChildren();
   if (!analysis) {
@@ -212,43 +288,6 @@ function renderMetricGrid(analysis) {
   cards.forEach(([value, label]) => metricGrid.appendChild(createMetricCard(value, label)));
 }
 
-function renderAnalysis(analysis) {
-  resultsShell.classList.toggle("is-ready", !!analysis);
-  renderMetricGrid(analysis);
-
-  if (!analysis) {
-    sessionTitle.textContent = "No analysis yet";
-    sessionMeta.textContent = "Analyze a file to populate the shared analyzer output.";
-    structureOutput.className = "stack empty-state";
-    structureOutput.textContent = "Analyze a FIT file to map the workout blocks.";
-    intervalOutput.className = "stack empty-state";
-    intervalOutput.textContent = "Interval execution stats appear here.";
-    notesOutput.className = "notes-output empty-state";
-    notesOutput.textContent = "The analyzer notes will appear here.";
-    return;
-  }
-
-  const titleParts = [cleanLabel(analysis.sport)];
-  if (analysis.sub_sport && analysis.sub_sport !== "Generic") {
-    titleParts.push(cleanLabel(analysis.sub_sport));
-  }
-  sessionTitle.textContent = titleParts.join(" / ");
-
-  const metaParts = [formatDateTime(analysis.start_time)];
-  if (analysis.ftp_watts > 0) {
-    metaParts.push(`FTP ${Math.round(analysis.ftp_watts)} W (${analysis.ftp_source || "input"})`);
-  }
-  if (analysis.weight_kg > 0) {
-    metaParts.push(`${analysis.weight_kg.toFixed(1)} kg`);
-  }
-  sessionMeta.textContent = metaParts.join(" • ");
-
-  renderStructure(analysis.workout_structure);
-  renderIntervals(analysis.intervals, analysis.workout_structure);
-  notesOutput.className = "notes-output";
-  notesOutput.textContent = analysis.notes || "No notes available.";
-}
-
 function renderStructure(workoutStructure) {
   structureOutput.replaceChildren();
   structureOutput.className = "stack";
@@ -271,24 +310,6 @@ function renderStructure(workoutStructure) {
   structureOutput.appendChild(summary);
 
   workoutStructure.blocks.forEach((block) => {
-    const card = document.createElement("article");
-    card.className = "structure-block";
-
-    const header = document.createElement("div");
-    header.className = "structure-block-header";
-
-    const title = document.createElement("strong");
-    title.textContent = cleanLabel(block.block_type);
-    header.appendChild(title);
-
-    const pill = document.createElement("span");
-    pill.className = "pill";
-    pill.textContent = formatDuration(block.duration_seconds);
-    header.appendChild(pill);
-    card.appendChild(header);
-
-    const meta = document.createElement("div");
-    meta.className = "block-meta";
     const details = [];
     if (block.avg_power_watts > 0) {
       details.push(`${Math.round(block.avg_power_watts)} W avg`);
@@ -299,34 +320,15 @@ function renderStructure(workoutStructure) {
     if (block.avg_cadence_rpm > 0) {
       details.push(`${Math.round(block.avg_cadence_rpm)} rpm avg`);
     }
-    meta.textContent = details.join(" • ");
-    if (details.length > 0) {
-      card.appendChild(meta);
-    }
-
-    const desc = document.createElement("div");
-    desc.className = "block-meta";
-    desc.textContent = block.description || "No block description available.";
-    card.appendChild(desc);
-
-    structureOutput.appendChild(card);
+    structureOutput.appendChild(
+      createInfoCard(
+        cleanLabel(block.block_type),
+        details.join(" • "),
+        block.description || "No block description available.",
+        formatDuration(block.duration_seconds),
+      ),
+    );
   });
-}
-
-function createReadoutCard(value, label) {
-  const card = document.createElement("article");
-  card.className = "readout-card";
-
-  const strong = document.createElement("strong");
-  strong.textContent = value;
-  card.appendChild(strong);
-
-  const span = document.createElement("span");
-  span.className = "metric-label";
-  span.textContent = label;
-  card.appendChild(span);
-
-  return card;
 }
 
 function renderIntervals(intervals, workoutStructure) {
@@ -362,45 +364,318 @@ function renderIntervals(intervals, workoutStructure) {
     createReadoutCard(formatPercent(intervals.work_power_change_pct, 1), "Power Drift"),
     createReadoutCard(intervals.work_heart_rate_change_bpm ? `${Math.round(intervals.work_heart_rate_change_bpm)} bpm` : "--", "HR Drift"),
   ].forEach((card) => grid.appendChild(card));
-
   intervalOutput.appendChild(grid);
 }
 
-function renderWarnings(warnings) {
-  warningsList.replaceChildren();
-  warningsList.className = "list";
+function renderAnalysis(analysis) {
+  resultsShell.classList.toggle("is-ready", !!analysis);
+  renderMetricGrid(analysis);
 
-  if (!warnings || warnings.length === 0) {
-    warningsList.classList.add("muted-list");
-    const item = document.createElement("li");
-    item.textContent = "No warnings.";
-    warningsList.appendChild(item);
+  if (!analysis) {
+    sessionTitle.textContent = "No analysis yet";
+    sessionMeta.textContent = "Analyze a file to populate the shared analyzer output.";
+    resetStack(structureOutput, "Analyze a FIT file to map the workout blocks.");
+    resetStack(intervalOutput, "Interval execution stats appear here.");
+    notesOutput.className = "notes-output empty-state";
+    notesOutput.textContent = "The analyzer notes will appear here.";
     return;
   }
 
-  warnings.forEach((warning) => {
-    const item = document.createElement("li");
-    item.textContent = warning;
-    warningsList.appendChild(item);
+  const titleParts = [cleanLabel(analysis.sport)];
+  if (analysis.sub_sport && analysis.sub_sport !== "Generic") {
+    titleParts.push(cleanLabel(analysis.sub_sport));
+  }
+  sessionTitle.textContent = titleParts.join(" / ");
+
+  const metaParts = [formatDateTime(analysis.start_time)];
+  if (analysis.ftp_watts > 0) {
+    metaParts.push(`FTP ${Math.round(analysis.ftp_watts)} W (${analysis.ftp_source || "input"})`);
+  }
+  if (analysis.weight_kg > 0) {
+    metaParts.push(`${analysis.weight_kg.toFixed(1)} kg`);
+  }
+  sessionMeta.textContent = metaParts.join(" • ");
+
+  renderStructure(analysis.workout_structure);
+  renderIntervals(analysis.intervals, analysis.workout_structure);
+  notesOutput.className = "notes-output";
+  notesOutput.textContent = analysis.notes || "No notes available.";
+}
+
+function resetRideResults() {
+  renderAnalysis(null);
+  renderWarnings(warningsList, []);
+  renderArtifacts(artifactList, [], "Run an analysis to build the artifact bundle.");
+  setSummary(summaryOutput, copyBtn, "");
+}
+
+function validateRideInputs() {
+  const hasFile = !!selectedFile;
+  analyzeBtn.disabled = !hasFile;
+
+  if (!hasFile) {
+    setStatus(statusEl, "Idle. Select a .fit file.");
+    return;
+  }
+
+  const ftp = positiveNumber(ftpInput);
+  const weight = positiveNumber(weightInput);
+  const parts = [];
+  if (ftp > 0) {
+    parts.push(`FTP ${Math.round(ftp)} W`);
+  }
+  if (weight > 0) {
+    parts.push(`weight ${weight.toFixed(1)} kg`);
+  }
+  setStatus(statusEl, parts.length > 0 ? `Ready to analyze with ${parts.join(" and ")}.` : "Ready to analyze. FTP and weight are optional.");
+}
+
+function setSelectedRideFile(file) {
+  selectedFile = file || null;
+  zipBlob = null;
+  downloadBtn.disabled = true;
+  resetRideResults();
+
+  if (!selectedFile) {
+    dropLabel.textContent = "Drag and drop a .fit file, or click to browse";
+    fileMeta.textContent = "No file selected.";
+    validateRideInputs();
+    return;
+  }
+
+  dropLabel.textContent = selectedFile.name;
+  fileMeta.textContent = `Selected: ${selectedFile.name} (${(selectedFile.size / 1024).toFixed(1)} KB)`;
+  validateRideInputs();
+}
+
+function renderRaceMetricGrid(plan) {
+  raceMetricGrid.replaceChildren();
+  if (!plan) {
+    [
+      createMetricCard("--", "Distance"),
+      createMetricCard("--", "Elevation"),
+      createMetricCard("--", "Duration"),
+      createMetricCard("--", "Fuel"),
+    ].forEach((card) => raceMetricGrid.appendChild(card));
+    return;
+  }
+
+  const cards = [
+    [formatDistance(plan.distance_meters), "Distance"],
+    [formatElevation(plan.elevation_gain_m), "Elevation Gain"],
+    [formatDuration(plan.estimated_duration_seconds), "Est. Duration"],
+    [`${(plan.estimated_average_speed_kph || 0).toFixed(1)} km/h`, "Est. Avg Speed"],
+    [cleanLabel(plan.rider_type), "Rider Type"],
+    [`${Math.round(plan.fuel_plan.carb_target_g_per_hour || 0)} g/h`, "Carb Target"],
+    [`${Math.round(plan.fuel_plan.fluid_target_ml_per_hour || 0)} mL/h`, "Fluid Target"],
+  ];
+
+  if (plan.longest_climb) {
+    cards.push([`${plan.longest_climb.length_km.toFixed(1)} km`, "Longest Climb"]);
+  }
+  if (plan.profile && plan.profile.w_per_kg > 0) {
+    cards.push([`${plan.profile.w_per_kg.toFixed(2)} W/kg`, "FTP W/kg"]);
+  }
+
+  cards.forEach(([value, label]) => raceMetricGrid.appendChild(createMetricCard(value, label)));
+}
+
+function renderClimbs(climbs) {
+  climbOutput.replaceChildren();
+  climbOutput.className = "stack";
+
+  if (!Array.isArray(climbs) || climbs.length === 0) {
+    climbOutput.classList.add("empty-state");
+    climbOutput.textContent = "No selective climbs were detected from the route profile.";
+    return;
+  }
+
+  climbs.forEach((climb) => {
+    climbOutput.appendChild(
+      createInfoCard(
+        climb.name || "Climb",
+        `km ${climb.start_km.toFixed(1)}-${climb.end_km.toFixed(1)} • +${Math.round(climb.gain_m)} m • ${climb.avg_grade_pct.toFixed(1)}% avg • ${climb.max_grade_pct.toFixed(1)}% max`,
+        `${cleanLabel(climb.severity)} climb. Estimated duration ${formatDuration(climb.estimated_duration_seconds || 0)}.`,
+        `${climb.length_km.toFixed(1)} km`,
+      ),
+    );
   });
 }
 
-function renderArtifacts(files) {
-  artifactList.replaceChildren();
-  artifactList.className = "list";
+function renderPressurePoints(points) {
+  pressureOutput.replaceChildren();
+  pressureOutput.className = "stack";
 
-  if (!files || files.length === 0) {
-    artifactList.classList.add("muted-list");
-    const item = document.createElement("li");
-    item.textContent = "Run an analysis to build the artifact bundle.";
-    artifactList.appendChild(item);
+  if (!Array.isArray(points) || points.length === 0) {
+    pressureOutput.classList.add("empty-state");
+    pressureOutput.textContent = "No standout route pressure points were detected.";
     return;
   }
 
-  files.forEach((name) => {
-    const item = document.createElement("li");
-    item.textContent = name;
-    artifactList.appendChild(item);
+  points.forEach((point) => {
+    pressureOutput.appendChild(
+      createInfoCard(
+        `${point.title} • km ${point.distance_km.toFixed(1)}`,
+        `${cleanLabel(point.category)} • ${cleanLabel(point.severity)}`,
+        `${point.reason} ${point.action}`,
+      ),
+    );
+  });
+}
+
+function renderFuelPlan(fuelPlan) {
+  fuelOutput.replaceChildren();
+  fuelOutput.className = "stack";
+
+  if (!fuelPlan) {
+    fuelOutput.classList.add("empty-state");
+    fuelOutput.textContent = "Fueling details will appear here after the route is analyzed.";
+    return;
+  }
+
+  const summary = document.createElement("article");
+  summary.className = "structure-summary";
+  const strong = document.createElement("strong");
+  strong.textContent = `${Math.round(fuelPlan.carb_target_g_per_hour || 0)} g/h carbs • ${Math.round(fuelPlan.fluid_target_ml_per_hour || 0)} mL/h fluid`;
+  summary.appendChild(strong);
+  const meta = document.createElement("div");
+  meta.className = "block-meta";
+  meta.textContent = `Start fueling by ${formatDuration(fuelPlan.start_fuel_by_seconds || 0)} or km ${(fuelPlan.start_fuel_by_distance_km || 0).toFixed(1)} • Est. total carbs ${Math.round(fuelPlan.estimated_total_carb_g || 0)} g`;
+  summary.appendChild(meta);
+  fuelOutput.appendChild(summary);
+
+  if (fuelPlan.caffeine_plan) {
+    fuelOutput.appendChild(createInfoCard("Caffeine", "", fuelPlan.caffeine_plan));
+  }
+
+  (fuelPlan.checkpoints || []).forEach((checkpoint) => {
+    fuelOutput.appendChild(
+      createInfoCard(
+        checkpoint.title,
+        `km ${checkpoint.distance_km.toFixed(1)} • ${formatDuration(checkpoint.approx_time_seconds)}`,
+        checkpoint.action,
+      ),
+    );
+  });
+}
+
+function renderDecisiveSectors(sectors) {
+  sectorOutput.replaceChildren();
+  sectorOutput.className = "stack";
+
+  if (!Array.isArray(sectors) || sectors.length === 0) {
+    sectorOutput.classList.add("empty-state");
+    sectorOutput.textContent = "No single decisive sector stands out from the route alone.";
+    return;
+  }
+
+  sectors.forEach((sector) => {
+    sectorOutput.appendChild(
+      createInfoCard(
+        `${sector.title} • km ${sector.start_km.toFixed(1)}-${sector.end_km.toFixed(1)}`,
+        cleanLabel(sector.type),
+        `${sector.why_it_matters} ${sector.recommended_action}`,
+      ),
+    );
+  });
+}
+
+function renderRacePlan(plan) {
+  raceResultsShell.classList.toggle("is-ready", !!plan);
+  renderRaceMetricGrid(plan);
+
+  if (!plan) {
+    courseTitle.textContent = "No race plan yet";
+    courseMeta.textContent = "Upload a course FIT to generate the route summary and tactical script.";
+    resetStack(climbOutput, "Build a race plan to identify the selective climbs.");
+    resetStack(pressureOutput, "Route pressure points and squeeze markers will appear here.");
+    resetStack(fuelOutput, "Fuel checkpoints will appear here once the course is analyzed.");
+    resetStack(sectorOutput, "The tool will rank likely selection and attack zones from the route profile.");
+    return;
+  }
+
+  courseTitle.textContent = plan.course_name || "Race plan";
+  const metaParts = [
+    `${cleanLabel(plan.source_type)} FIT`,
+    plan.profile && plan.profile.strategy_mode ? `${cleanLabel(plan.profile.strategy_mode)} mode` : "",
+    plan.sport ? cleanLabel(plan.sport) : "",
+  ].filter(Boolean);
+  courseMeta.textContent = metaParts.join(" • ");
+
+  renderClimbs(plan.climbs);
+  renderPressurePoints(plan.pressure_points);
+  renderFuelPlan(plan.fuel_plan);
+  renderDecisiveSectors(plan.decisive_sectors);
+}
+
+function resetRaceResults() {
+  renderRacePlan(null);
+  renderWarnings(raceWarningsList, []);
+  renderArtifacts(raceArtifactList, [], "Run a race plan to build the route bundle.");
+  setSummary(raceSummaryOutput, raceCopyBtn, "");
+}
+
+function validateRaceInputs() {
+  const hasFile = !!selectedCourseFile;
+  racePlanBtn.disabled = !hasFile;
+
+  if (!hasFile) {
+    setStatus(raceStatusEl, "Idle. Select a course .fit file.");
+    return;
+  }
+
+  const ftp = positiveNumber(raceFTPInput);
+  const weight = positiveNumber(raceWeightInput);
+  const mode = cleanLabel(strategyInput.value || "balanced");
+  const parts = [mode];
+  if (ftp > 0) {
+    parts.push(`FTP ${Math.round(ftp)} W`);
+  }
+  if (weight > 0) {
+    parts.push(`weight ${weight.toFixed(1)} kg`);
+  }
+  setStatus(raceStatusEl, `Ready to plan with ${parts.join(" • ")}.`);
+}
+
+function setSelectedCourseFile(file) {
+  selectedCourseFile = file || null;
+  raceZipBlob = null;
+  raceDownloadBtn.disabled = true;
+  resetRaceResults();
+
+  if (!selectedCourseFile) {
+    courseDropLabel.textContent = "Drag and drop a course .fit file, or click to browse";
+    courseFileMeta.textContent = "No course file selected.";
+    validateRaceInputs();
+    return;
+  }
+
+  courseDropLabel.textContent = selectedCourseFile.name;
+  courseFileMeta.textContent = `Selected: ${selectedCourseFile.name} (${(selectedCourseFile.size / 1024).toFixed(1)} KB)`;
+  validateRaceInputs();
+}
+
+function postWorkerAction(action, buffer, options) {
+  const id = ++requestCounter;
+  worker.postMessage(
+    {
+      id,
+      action,
+      fileBuffer: buffer,
+      options,
+    },
+    [buffer],
+  );
+
+  return new Promise((resolve) => {
+    const onMessage = (event) => {
+      if (!event.data || event.data.id !== id) {
+        return;
+      }
+      worker.removeEventListener("message", onMessage);
+      resolve(event.data);
+    };
+    worker.addEventListener("message", onMessage);
   });
 }
 
@@ -409,45 +684,25 @@ async function runAnalysis() {
     return;
   }
 
-  setStatus("Reading file...");
-  resetResults();
+  setStatus(statusEl, "Reading file...");
+  resetRideResults();
   analyzeBtn.disabled = true;
   downloadBtn.disabled = true;
   copyBtn.disabled = true;
 
   try {
     const buffer = await selectedFile.arrayBuffer();
-    const id = ++requestCounter;
+    setStatus(statusEl, "Analyzing in browser with the shared Go library...");
 
-    setStatus("Analyzing in browser with the shared Go library...");
-    worker.postMessage(
-      {
-        id,
-        action: "analyze",
-        fileBuffer: buffer,
-        options: {
-          source_file_name: selectedFile.name,
-          ftp_w: positiveNumber(ftpInput),
-          weight_kg: positiveNumber(weightInput),
-          format: "csv",
-        },
-      },
-      [buffer],
-    );
-
-    const response = await new Promise((resolve) => {
-      const onMessage = (event) => {
-        if (!event.data || event.data.id !== id) {
-          return;
-        }
-        worker.removeEventListener("message", onMessage);
-        resolve(event.data);
-      };
-      worker.addEventListener("message", onMessage);
+    const response = await postWorkerAction("analyze", buffer, {
+      source_file_name: selectedFile.name,
+      ftp_w: positiveNumber(ftpInput),
+      weight_kg: positiveNumber(weightInput),
+      format: "csv",
     });
 
     if (!response.ok) {
-      setStatus(`Analysis failed: ${response.error || "Unknown error"}`, "error");
+      setStatus(statusEl, `Analysis failed: ${response.error || "Unknown error"}`, "error");
       return;
     }
 
@@ -458,12 +713,13 @@ async function runAnalysis() {
 
     const analysis = response.analysisJSON ? JSON.parse(response.analysisJSON) : null;
     renderAnalysis(analysis);
-    renderWarnings(Array.isArray(response.warnings) ? response.warnings : []);
-    renderArtifacts(Array.isArray(response.files) ? response.files : []);
-    setSummary(response.summary || "");
+    renderWarnings(warningsList, Array.isArray(response.warnings) ? response.warnings : []);
+    renderArtifacts(artifactList, Array.isArray(response.files) ? response.files : [], "Run an analysis to build the artifact bundle.");
+    setSummary(summaryOutput, copyBtn, response.summary || "");
 
     const warningCount = Array.isArray(response.warnings) ? response.warnings.length : 0;
     setStatus(
+      statusEl,
       warningCount > 0
         ? `Analysis complete with ${warningCount} warning${warningCount === 1 ? "" : "s"}.`
         : "Analysis complete. Summary and artifact bundle are ready.",
@@ -471,68 +727,143 @@ async function runAnalysis() {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    setStatus(`Analysis failed: ${message}`, "error");
+    setStatus(statusEl, `Analysis failed: ${message}`, "error");
   } finally {
     analyzeBtn.disabled = !selectedFile;
   }
 }
 
-function downloadZip() {
-  if (!zipBlob) {
+async function runRacePlan() {
+  if (!selectedCourseFile) {
     return;
   }
-  const url = URL.createObjectURL(zipBlob);
+
+  setStatus(raceStatusEl, "Reading course file...");
+  resetRaceResults();
+  racePlanBtn.disabled = true;
+  raceDownloadBtn.disabled = true;
+  raceCopyBtn.disabled = true;
+
+  try {
+    const buffer = await selectedCourseFile.arrayBuffer();
+    setStatus(raceStatusEl, "Building route-aware race plan in browser...");
+
+    const response = await postWorkerAction("race-plan", buffer, {
+      source_file_name: selectedCourseFile.name,
+      ftp_w: positiveNumber(raceFTPInput),
+      weight_kg: positiveNumber(raceWeightInput),
+      max_carb_g_per_h: positiveNumber(carbInput),
+      bottle_ml: positiveNumber(bottleInput),
+      start_bottles: nonNegativeInteger(bottlesInput),
+      caffeine_mg_per_kg: positiveNumber(caffeineInput),
+      strategy_mode: strategyInput.value || "balanced",
+    });
+
+    if (!response.ok) {
+      setStatus(raceStatusEl, `Race plan failed: ${response.error || "Unknown error"}`, "error");
+      return;
+    }
+
+    raceZipBlob = new Blob([response.zipBuffer], { type: "application/zip" });
+    const stem = selectedCourseFile.name.replace(/\.fit$/i, "");
+    raceZipName = `${stem || "course"}_race_plan.zip`;
+    raceDownloadBtn.disabled = false;
+
+    const plan = response.planJSON ? JSON.parse(response.planJSON) : null;
+    renderRacePlan(plan);
+    renderWarnings(raceWarningsList, Array.isArray(response.warnings) ? response.warnings : []);
+    renderArtifacts(raceArtifactList, Array.isArray(response.files) ? response.files : [], "Run a race plan to build the route bundle.");
+    setSummary(raceSummaryOutput, raceCopyBtn, response.summary || "");
+
+    const warningCount = Array.isArray(response.warnings) ? response.warnings.length : 0;
+    setStatus(
+      raceStatusEl,
+      warningCount > 0
+        ? `Race plan complete with ${warningCount} note${warningCount === 1 ? "" : "s"}.`
+        : "Race plan complete. Tactical script and export bundle are ready.",
+      "success",
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setStatus(raceStatusEl, `Race plan failed: ${message}`, "error");
+  } finally {
+    racePlanBtn.disabled = !selectedCourseFile;
+  }
+}
+
+function downloadBlob(blob, name) {
+  if (!blob) {
+    return;
+  }
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = zipName;
+  anchor.download = name;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
 }
 
-async function copySummary() {
-  if (!summaryOutput.value) {
+async function copyTextFrom(textarea, statusTarget, message) {
+  if (!textarea.value) {
     return;
   }
   try {
-    await navigator.clipboard.writeText(summaryOutput.value);
+    await navigator.clipboard.writeText(textarea.value);
   } catch (_error) {
-    summaryOutput.focus();
-    summaryOutput.select();
+    textarea.focus();
+    textarea.select();
     document.execCommand("copy");
   }
-  setStatus("Markdown summary copied.", "success");
+  setStatus(statusTarget, message, "success");
+}
+
+function wireDropZone(dropTarget, setter) {
+  dropTarget.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    dropTarget.classList.add("dragging");
+  });
+  dropTarget.addEventListener("dragleave", () => {
+    dropTarget.classList.remove("dragging");
+  });
+  dropTarget.addEventListener("drop", (event) => {
+    event.preventDefault();
+    dropTarget.classList.remove("dragging");
+    const file = event.dataTransfer.files && event.dataTransfer.files[0];
+    setter(file);
+  });
 }
 
 fileInput.addEventListener("change", (event) => {
-  const file = event.target.files && event.target.files[0];
-  setSelectedFile(file);
+  setSelectedRideFile(event.target.files && event.target.files[0]);
 });
 
 [ftpInput, weightInput].forEach((input) => {
-  input.addEventListener("input", validateInputs);
+  input.addEventListener("input", validateRideInputs);
 });
 
 analyzeBtn.addEventListener("click", runAnalysis);
-downloadBtn.addEventListener("click", downloadZip);
-copyBtn.addEventListener("click", copySummary);
+downloadBtn.addEventListener("click", () => downloadBlob(zipBlob, zipName));
+copyBtn.addEventListener("click", () => copyTextFrom(summaryOutput, statusEl, "Markdown summary copied."));
 
-dropZone.addEventListener("dragover", (event) => {
-  event.preventDefault();
-  dropZone.classList.add("dragging");
+courseFileInput.addEventListener("change", (event) => {
+  setSelectedCourseFile(event.target.files && event.target.files[0]);
 });
 
-dropZone.addEventListener("dragleave", () => {
-  dropZone.classList.remove("dragging");
+[raceFTPInput, raceWeightInput, carbInput, bottleInput, bottlesInput, caffeineInput, strategyInput].forEach((input) => {
+  input.addEventListener("input", validateRaceInputs);
+  input.addEventListener("change", validateRaceInputs);
 });
 
-dropZone.addEventListener("drop", (event) => {
-  event.preventDefault();
-  dropZone.classList.remove("dragging");
-  const file = event.dataTransfer.files && event.dataTransfer.files[0];
-  setSelectedFile(file);
-});
+racePlanBtn.addEventListener("click", runRacePlan);
+raceDownloadBtn.addEventListener("click", () => downloadBlob(raceZipBlob, raceZipName));
+raceCopyBtn.addEventListener("click", () => copyTextFrom(raceSummaryOutput, raceStatusEl, "Race plan copied."));
 
-resetResults();
-validateInputs();
+wireDropZone(dropZone, setSelectedRideFile);
+wireDropZone(courseDropZone, setSelectedCourseFile);
+
+resetRideResults();
+validateRideInputs();
+resetRaceResults();
+validateRaceInputs();

@@ -18,6 +18,7 @@
         <div class="hero-badges" aria-label="app capabilities">
           <span>WASM runtime</span>
           <span>Structured workout detection</span>
+          <span>Course race planning</span>
           <span>LLM-ready artifact bundle</span>
         </div>
       </header>
@@ -135,6 +136,165 @@
               <button id="copy-btn" class="button-secondary" disabled>Copy Summary</button>
             </div>
             <textarea id="summary-output" class="summary-output" readonly placeholder="Analyze a ride to generate a markdown summary you can paste into a training log, issue, or LLM chat."></textarea>
+          </section>
+        </div>
+      </section>
+
+      <section class="panel controls">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Race Strategy</p>
+            <h2>Course-Based Race Plan</h2>
+            <p class="muted">Upload a course `.fit`, add your rider profile, and build a deterministic race script with fueling, positioning, and attack windows rooted in the route data.</p>
+          </div>
+        </div>
+
+        <div class="control-step">
+          <p class="eyebrow">1. Course File</p>
+          <label id="course-drop-zone" class="drop-zone" for="course-file-input">
+            <input id="course-file-input" type="file" accept=".fit" />
+            <span id="course-drop-label">Drag and drop a course .fit file, or click to browse</span>
+          </label>
+          <p id="course-file-meta" class="muted">No course file selected.</p>
+        </div>
+
+        <div class="control-grid">
+          <div class="control-step">
+            <p class="eyebrow">2. Rider Profile</p>
+            <div class="grid">
+              <label>
+                FTP (watts)
+                <input id="race-ftp-input" type="number" min="1" step="1" placeholder="Optional but recommended" />
+              </label>
+              <label>
+                Weight (kg)
+                <input id="race-weight-input" type="number" min="1" step="0.1" placeholder="Optional but recommended" />
+              </label>
+              <label>
+                Max carbs (g/h)
+                <input id="carb-input" type="number" min="20" step="5" placeholder="Optional cap" />
+              </label>
+              <label>
+                Bottle size (mL)
+                <input id="bottle-input" type="number" min="250" step="50" placeholder="650" />
+              </label>
+              <label>
+                Start bottles
+                <input id="bottles-input" type="number" min="0" step="1" placeholder="2" />
+              </label>
+              <label>
+                Caffeine (mg/kg)
+                <input id="caffeine-input" type="number" min="0" step="0.5" placeholder="Optional" />
+              </label>
+              <label>
+                Strategy mode
+                <select id="strategy-input">
+                  <option value="balanced">Balanced</option>
+                  <option value="conservative">Conservative</option>
+                  <option value="aggressive">Aggressive</option>
+                </select>
+              </label>
+            </div>
+            <p class="muted">FTP and weight make the pacing and duration model more specific. Carb, bottle, and caffeine fields shape the race-day logistics rather than the route analysis itself.</p>
+          </div>
+
+          <div class="control-step control-actions">
+            <p class="eyebrow">3. Build Plan</p>
+            <div class="actions">
+              <button id="race-plan-btn" class="button-primary" disabled>Build Race Plan</button>
+              <button id="race-download-btn" class="button-secondary" disabled>Download ZIP</button>
+            </div>
+            <p id="race-status" class="status">Idle. Select a course .fit file.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="race-results-shell" class="results-shell">
+        <section class="panel spotlight">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Race Overview</p>
+              <h2 id="course-title">No race plan yet</h2>
+              <p id="course-meta" class="muted">Upload a course FIT to generate the route summary and tactical script.</p>
+            </div>
+          </div>
+          <div id="race-metric-grid" class="metric-grid"></div>
+        </section>
+
+        <div class="results-grid">
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Climbs</p>
+                <h2>Key Elevation Sectors</h2>
+              </div>
+            </div>
+            <div id="climb-output" class="stack empty-state">Build a race plan to identify the selective climbs.</div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Pressure Points</p>
+                <h2>Handling And Positioning</h2>
+              </div>
+            </div>
+            <div id="pressure-output" class="stack empty-state">Route pressure points and squeeze markers will appear here.</div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Fueling</p>
+                <h2>When And Where To Eat</h2>
+              </div>
+            </div>
+            <div id="fuel-output" class="stack empty-state">Fuel checkpoints will appear here once the course is analyzed.</div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Decisive Sectors</p>
+                <h2>Attack Windows</h2>
+              </div>
+            </div>
+            <div id="sector-output" class="stack empty-state">The tool will rank likely selection and attack zones from the route profile.</div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Warnings</p>
+                <h2>Model Notes</h2>
+              </div>
+            </div>
+            <ul id="race-warnings-list" class="list muted-list">
+              <li>No warnings.</li>
+            </ul>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Artifacts</p>
+                <h2>Export Bundle</h2>
+              </div>
+            </div>
+            <ul id="race-artifact-list" class="list muted-list">
+              <li>Run a race plan to build the route bundle.</li>
+            </ul>
+          </section>
+
+          <section class="panel panel-wide">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Markdown Plan</p>
+                <h2>Coach Script</h2>
+              </div>
+              <button id="race-copy-btn" class="button-secondary" disabled>Copy Plan</button>
+            </div>
+            <textarea id="race-summary-output" class="summary-output" readonly placeholder="Build a race plan to generate a course-aware strategy you can paste into notes, share with a teammate, or keep on your phone for race day."></textarea>
           </section>
         </div>
       </section>

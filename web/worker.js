@@ -15,20 +15,25 @@ async function initRuntime() {
     if (typeof self.analyzeFit !== "function") {
       throw new Error("analyzeFit function was not registered by WASM runtime");
     }
+    if (typeof self.planRaceFit !== "function") {
+      throw new Error("planRaceFit function was not registered by WASM runtime");
+    }
   })();
   return runtimeReady;
 }
 
 self.onmessage = async (event) => {
   const { id, action, fileBuffer, options } = event.data || {};
-  if (action !== "analyze") {
+  if (action !== "analyze" && action !== "race-plan") {
     return;
   }
 
   try {
     await initRuntime();
     const fitBytes = new Uint8Array(fileBuffer);
-    const result = self.analyzeFit(fitBytes, options || {});
+    const result = action === "race-plan"
+      ? self.planRaceFit(fitBytes, options || {})
+      : self.analyzeFit(fitBytes, options || {});
     if (!result || result.ok !== true) {
       const message = (result && result.error) || "analysis failed";
       self.postMessage({ id, ok: false, error: message });
@@ -47,8 +52,10 @@ self.onmessage = async (event) => {
       {
         id,
         ok: true,
+        action,
         summary: typeof result.summary_md === "string" ? result.summary_md : "",
         analysisJSON: typeof result.analysis_json === "string" ? result.analysis_json : "",
+        planJSON: typeof result.plan_json === "string" ? result.plan_json : "",
         warnings: Array.isArray(result.warnings) ? result.warnings : [],
         files: Array.isArray(result.files) ? result.files : [],
         zipBuffer: zipCopy.buffer,

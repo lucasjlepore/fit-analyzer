@@ -1,6 +1,7 @@
 # fit-analyzer
 
 - Analyze `.fit` workout files and generate training notes.
+- Build route-aware race strategy from course or route `.fit` files.
 - Export FIT files losslessly to an LLM-friendly format.
 - Produce deterministic artifacts for downstream LLM analysis.
 - Run analysis directly in-browser via GitHub Pages (WASM).
@@ -86,7 +87,9 @@ Features:
 
 - Drag/drop or browse `.fit` files.
 - Optional inputs: FTP (W) and weight (kg).
+- Separate course-planning workflow for route `.fit` files plus rider profile inputs.
 - Browser UI exports `canonical_samples` as CSV.
+- Browser UI exports race-plan bundles as JSON + Markdown + source FIT ZIP.
 - Displays a markdown ride summary for copy/paste into notes or an LLM.
 - Download one `.zip` containing all artifacts.
 
