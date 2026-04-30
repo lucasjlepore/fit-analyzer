@@ -162,3 +162,20 @@ if err != nil {
 }
 fmt.Println(len(res.Files), res.Warnings)
 ```
+
+Race planning engine:
+
+```go
+plan, err := raceplan.PlanBytes("course.fit", fitBytes, raceplan.Profile{
+    FTPWatts:     285,
+    WeightKG:     70,
+    Goal:         "lead_group",
+    StrategyMode: "balanced",
+})
+if err != nil {
+    // handle
+}
+fmt.Println(plan.CourseName, len(plan.Climbs))
+```
+
+`raceplan` is also published as its own module at `github.com/lucasjlepore/fit-analyzer/raceplan` so authenticated backends such as Scout can depend on the planning engine without importing the full app module.
