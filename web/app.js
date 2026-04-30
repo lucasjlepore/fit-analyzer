@@ -23,12 +23,21 @@ const courseDropZone = document.getElementById("course-drop-zone");
 const courseDropLabel = document.getElementById("course-drop-label");
 const courseFileInput = document.getElementById("course-file-input");
 const courseFileMeta = document.getElementById("course-file-meta");
+const profileImportInput = document.getElementById("profile-import-input");
+const profileImportMeta = document.getElementById("profile-import-meta");
 const raceFTPInput = document.getElementById("race-ftp-input");
 const raceWeightInput = document.getElementById("race-weight-input");
 const carbInput = document.getElementById("carb-input");
 const bottleInput = document.getElementById("bottle-input");
 const bottlesInput = document.getElementById("bottles-input");
 const caffeineInput = document.getElementById("caffeine-input");
+const goalInput = document.getElementById("goal-input");
+const riderTypeInput = document.getElementById("rider-type-input");
+const weeklyHoursInput = document.getElementById("weekly-hours-input");
+const weeklyKMInput = document.getElementById("weekly-km-input");
+const longestRideInput = document.getElementById("longest-ride-input");
+const teamSupportInput = document.getElementById("team-support-input");
+const technicalInput = document.getElementById("technical-input");
 const strategyInput = document.getElementById("strategy-input");
 const racePlanBtn = document.getElementById("race-plan-btn");
 const raceDownloadBtn = document.getElementById("race-download-btn");
@@ -54,6 +63,7 @@ let zipName = "fit-analysis.zip";
 let selectedCourseFile = null;
 let raceZipBlob = null;
 let raceZipName = "race-plan.zip";
+let importedProfileWarning = "";
 
 let requestCounter = 0;
 
@@ -65,6 +75,53 @@ function positiveNumber(input) {
 function nonNegativeInteger(input) {
   const value = Number(input.value);
   return Number.isFinite(value) && value >= 0 ? Math.round(value) : 0;
+}
+
+function optionalNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function setNumberInput(input, value, digits = 0) {
+  if (!(value > 0)) {
+    return;
+  }
+  input.value = digits > 0 ? Number(value).toFixed(digits) : String(Math.round(value));
+}
+
+function setSelectInput(input, value, allowed) {
+  const normalized = String(value || "").trim();
+  if (!normalized || !allowed.includes(normalized)) {
+    return;
+  }
+  input.value = normalized;
+}
+
+function extractImportedProfile(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const profile = payload.profile && typeof payload.profile === "object" ? payload.profile : payload;
+  const training = payload.derived_training && typeof payload.derived_training === "object" ? payload.derived_training : {};
+  const hasStartBottles = Object.prototype.hasOwnProperty.call(profile, "start_bottles");
+  return {
+    athleteName: payload.athlete && typeof payload.athlete === "object" ? String(payload.athlete.display_name || payload.athlete.id || "").trim() : "",
+    weeklyHours: Number(profile.weekly_hours || training.weekly_hours || 0),
+    weeklyKM: Number(profile.weekly_km || training.weekly_km || 0),
+    longestRideKM: Number(profile.longest_recent_ride_km || training.longest_recent_ride_km || 0),
+    ftp: Number(profile.ftp_w || profile.ftp_watts || 0),
+    weight: Number(profile.weight_kg || 0),
+    carbs: Number(profile.max_carb_g_per_h || profile.max_carb_g_per_hour || 0),
+    bottleML: Number(profile.bottle_ml || 0),
+    startBottles: hasStartBottles ? optionalNumber(profile.start_bottles) : null,
+    caffeine: Number(profile.caffeine_mg_per_kg || 0),
+    goal: String(profile.goal || "").trim(),
+    riderType: String(profile.rider_type || "").trim(),
+    teamSupport: String(profile.team_support || "").trim(),
+    technical: String(profile.technical_confidence || "").trim(),
+    strategyMode: String(profile.strategy_mode || "").trim(),
+    warnings: Array.isArray(payload.warnings) ? payload.warnings.filter((value) => typeof value === "string") : [],
+  };
 }
 
 function setStatus(element, message, tone = "") {
@@ -476,6 +533,12 @@ function renderRaceMetricGrid(plan) {
   if (plan.profile && plan.profile.w_per_kg > 0) {
     cards.push([`${plan.profile.w_per_kg.toFixed(2)} W/kg`, "FTP W/kg"]);
   }
+  if (plan.profile && plan.profile.weekly_hours > 0) {
+    cards.push([`${plan.profile.weekly_hours.toFixed(1)} h/wk`, "Recent Volume"]);
+  }
+  if (plan.profile && plan.profile.longest_recent_ride_km > 0) {
+    cards.push([`${Math.round(plan.profile.longest_recent_ride_km)} km`, "Longest Recent Ride"]);
+  }
 
   cards.forEach(([value, label]) => raceMetricGrid.appendChild(createMetricCard(value, label)));
 }
@@ -598,6 +661,7 @@ function renderRacePlan(plan) {
   const metaParts = [
     `${cleanLabel(plan.source_type)} FIT`,
     plan.profile && plan.profile.strategy_mode ? `${cleanLabel(plan.profile.strategy_mode)} mode` : "",
+    plan.profile && plan.profile.goal ? cleanLabel(plan.profile.goal) : "",
     plan.sport ? cleanLabel(plan.sport) : "",
   ].filter(Boolean);
   courseMeta.textContent = metaParts.join(" • ");
@@ -628,13 +692,27 @@ function validateRaceInputs() {
   const weight = positiveNumber(raceWeightInput);
   const mode = cleanLabel(strategyInput.value || "balanced");
   const parts = [mode];
+  const goal = cleanLabel(goalInput.value || "");
+  const weeklyKM = positiveNumber(weeklyKMInput);
   if (ftp > 0) {
     parts.push(`FTP ${Math.round(ftp)} W`);
   }
   if (weight > 0) {
     parts.push(`weight ${weight.toFixed(1)} kg`);
   }
-  setStatus(raceStatusEl, `Ready to plan with ${parts.join(" • ")}.`);
+  if (goal !== "Unknown") {
+    parts.push(goal);
+  }
+  if (weeklyKM > 0) {
+    parts.push(`${Math.round(weeklyKM)} km/week`);
+  }
+  let message = `Ready to plan with ${parts.join(" • ")}.`;
+  let tone = "";
+  if (importedProfileWarning) {
+    message += ` Import note: ${importedProfileWarning}`;
+    tone = "warning";
+  }
+  setStatus(raceStatusEl, message, tone);
 }
 
 function setSelectedCourseFile(file) {
@@ -653,6 +731,65 @@ function setSelectedCourseFile(file) {
   courseDropLabel.textContent = selectedCourseFile.name;
   courseFileMeta.textContent = `Selected: ${selectedCourseFile.name} (${(selectedCourseFile.size / 1024).toFixed(1)} KB)`;
   validateRaceInputs();
+}
+
+async function applyProfileImport(file) {
+  if (!file) {
+    importedProfileWarning = "";
+    profileImportMeta.textContent = "Optional. Import a Scout export to prefill recent training volume.";
+    validateRaceInputs();
+    return;
+  }
+
+  try {
+    const raw = await file.text();
+    const payload = JSON.parse(raw);
+    const imported = extractImportedProfile(payload);
+    if (!imported) {
+      throw new Error("Unsupported profile payload");
+    }
+
+    setNumberInput(raceFTPInput, imported.ftp);
+    setNumberInput(raceWeightInput, imported.weight, 1);
+    setNumberInput(carbInput, imported.carbs);
+    setNumberInput(bottleInput, imported.bottleML);
+    if (imported.startBottles !== null && imported.startBottles >= 0) {
+      bottlesInput.value = String(Math.round(imported.startBottles));
+    }
+    setNumberInput(caffeineInput, imported.caffeine, 1);
+    setNumberInput(weeklyHoursInput, imported.weeklyHours, 1);
+    setNumberInput(weeklyKMInput, imported.weeklyKM);
+    setNumberInput(longestRideInput, imported.longestRideKM);
+    setSelectInput(goalInput, imported.goal, ["finish", "lead_group", "top_10", "podium", "win", "support_teammate"]);
+    setSelectInput(riderTypeInput, imported.riderType, ["climber", "puncheur", "all_rounder", "diesel_rouleur", "steady_endurance_rider", "sprinter"]);
+    setSelectInput(teamSupportInput, imported.teamSupport, ["solo", "teammates"]);
+    setSelectInput(technicalInput, imported.technical, ["low", "medium", "high"]);
+    setSelectInput(strategyInput, imported.strategyMode, ["balanced", "conservative", "aggressive"]);
+
+    const summaryBits = [];
+    if (imported.athleteName) {
+      summaryBits.push(imported.athleteName);
+    }
+    if (imported.weeklyHours > 0) {
+      summaryBits.push(`${imported.weeklyHours.toFixed(1)} h/week`);
+    }
+    if (imported.weeklyKM > 0) {
+      summaryBits.push(`${Math.round(imported.weeklyKM)} km/week`);
+    }
+    if (imported.longestRideKM > 0) {
+      summaryBits.push(`long ride ${Math.round(imported.longestRideKM)} km`);
+    }
+    profileImportMeta.textContent = summaryBits.length > 0
+      ? `Imported: ${summaryBits.join(" • ")}`
+      : `Imported ${file.name}.`;
+    importedProfileWarning = imported.warnings.length > 0 ? imported.warnings[0] : "";
+    validateRaceInputs();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    importedProfileWarning = "";
+    profileImportMeta.textContent = `Profile import failed: ${message}`;
+    setStatus(raceStatusEl, `Profile import failed: ${message}`, "error");
+  }
 }
 
 function postWorkerAction(action, buffer, options) {
@@ -756,6 +893,13 @@ async function runRacePlan() {
       bottle_ml: positiveNumber(bottleInput),
       start_bottles: nonNegativeInteger(bottlesInput),
       caffeine_mg_per_kg: positiveNumber(caffeineInput),
+      goal: goalInput.value || "",
+      rider_type: riderTypeInput.value || "",
+      weekly_hours: positiveNumber(weeklyHoursInput),
+      weekly_km: positiveNumber(weeklyKMInput),
+      longest_recent_ride_km: positiveNumber(longestRideInput),
+      team_support: teamSupportInput.value || "",
+      technical_confidence: technicalInput.value || "",
       strategy_mode: strategyInput.value || "balanced",
     });
 
@@ -851,7 +995,13 @@ courseFileInput.addEventListener("change", (event) => {
   setSelectedCourseFile(event.target.files && event.target.files[0]);
 });
 
-[raceFTPInput, raceWeightInput, carbInput, bottleInput, bottlesInput, caffeineInput, strategyInput].forEach((input) => {
+[profileImportInput].forEach((input) => {
+  input.addEventListener("change", (event) => {
+    applyProfileImport(event.target.files && event.target.files[0]);
+  });
+});
+
+[raceFTPInput, raceWeightInput, carbInput, bottleInput, bottlesInput, caffeineInput, goalInput, riderTypeInput, weeklyHoursInput, weeklyKMInput, longestRideInput, teamSupportInput, technicalInput, strategyInput].forEach((input) => {
   input.addEventListener("input", validateRaceInputs);
   input.addEventListener("change", validateRaceInputs);
 });

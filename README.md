@@ -88,6 +88,7 @@ Features:
 - Drag/drop or browse `.fit` files.
 - Optional inputs: FTP (W) and weight (kg).
 - Separate course-planning workflow for route `.fit` files plus rider profile inputs.
+- Optional Scout athlete-profile JSON import to prefill recent weekly volume and long-ride durability.
 - Browser UI exports `canonical_samples` as CSV.
 - Browser UI exports race-plan bundles as JSON + Markdown + source FIT ZIP.
 - Displays a markdown ride summary for copy/paste into notes or an LLM.
@@ -105,6 +106,14 @@ Local web build:
 ```
 
 This writes build artifacts to `web/dist/`.
+
+Scout athlete import:
+
+1. Log into your local Scout instance with Strava.
+2. Download `GET /v1/me/race-profile/export`.
+3. Import that `.json` file into the race-plan form in fit-analyzer.
+
+The Scout export currently auto-fills recent weekly hours, weekly km, and longest recent ride. FTP, weight, and race-day tactics inputs still remain editable in fit-analyzer because Strava alone does not reliably provide them.
 
 GitHub Pages deploy:
 

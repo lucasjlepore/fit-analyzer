@@ -97,6 +97,13 @@ func planRaceFit(_ js.Value, args []js.Value) any {
 		BottleML:        getFloat(optsArg, "bottle_ml"),
 		StartBottles:    getInt(optsArg, "start_bottles"),
 		CaffeineMgPerKG: getFloat(optsArg, "caffeine_mg_per_kg"),
+		Goal:            getString(optsArg, "goal", ""),
+		RiderType:       getString(optsArg, "rider_type", ""),
+		WeeklyHours:     getFloat(optsArg, "weekly_hours"),
+		WeeklyKM:        getFloat(optsArg, "weekly_km"),
+		LongestRideKM:   getFloat(optsArg, "longest_recent_ride_km"),
+		TeamSupport:     getString(optsArg, "team_support", ""),
+		TechnicalSkill:  getString(optsArg, "technical_confidence", ""),
 		StrategyMode:    getString(optsArg, "strategy_mode", "balanced"),
 	})
 	if err != nil {

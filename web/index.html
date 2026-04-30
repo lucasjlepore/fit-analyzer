@@ -161,6 +161,11 @@
         <div class="control-grid">
           <div class="control-step">
             <p class="eyebrow">2. Rider Profile</p>
+            <label>
+              Scout profile export (`.json`)
+              <input id="profile-import-input" type="file" accept=".json,application/json" />
+            </label>
+            <p id="profile-import-meta" class="muted">Optional. Import a Scout export to prefill recent training volume.</p>
             <div class="grid">
               <label>
                 FTP (watts)
@@ -171,7 +176,7 @@
                 <input id="race-weight-input" type="number" min="1" step="0.1" placeholder="Optional but recommended" />
               </label>
               <label>
-                Max carbs (g/h)
+                Practiced carbs (g/h)
                 <input id="carb-input" type="number" min="20" step="5" placeholder="Optional cap" />
               </label>
               <label>
@@ -187,6 +192,59 @@
                 <input id="caffeine-input" type="number" min="0" step="0.5" placeholder="Optional" />
               </label>
               <label>
+                Goal
+                <select id="goal-input">
+                  <option value="">Auto / not set</option>
+                  <option value="finish">Finish well</option>
+                  <option value="lead_group">Make lead group</option>
+                  <option value="top_10">Top 10</option>
+                  <option value="podium">Podium</option>
+                  <option value="win">Win</option>
+                  <option value="support_teammate">Support teammate</option>
+                </select>
+              </label>
+              <label>
+                Rider type
+                <select id="rider-type-input">
+                  <option value="">Auto-detect</option>
+                  <option value="climber">Climber</option>
+                  <option value="puncheur">Puncheur</option>
+                  <option value="all_rounder">All-rounder</option>
+                  <option value="diesel_rouleur">Diesel rouleur</option>
+                  <option value="steady_endurance_rider">Steady endurance rider</option>
+                  <option value="sprinter">Sprinter</option>
+                </select>
+              </label>
+              <label>
+                Weekly hours
+                <input id="weekly-hours-input" type="number" min="0" step="0.1" placeholder="Optional" />
+              </label>
+              <label>
+                Weekly km
+                <input id="weekly-km-input" type="number" min="0" step="1" placeholder="Optional" />
+              </label>
+              <label>
+                Longest recent ride (km)
+                <input id="longest-ride-input" type="number" min="0" step="1" placeholder="Optional" />
+              </label>
+              <label>
+                Team support
+                <select id="team-support-input">
+                  <option value="">Not set</option>
+                  <option value="solo">Solo</option>
+                  <option value="teammates">Teammates</option>
+                </select>
+              </label>
+              <label>
+                Technical confidence
+                <select id="technical-input">
+                  <option value="">Not set</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+              <label>
                 Strategy mode
                 <select id="strategy-input">
                   <option value="balanced">Balanced</option>
@@ -195,7 +253,7 @@
                 </select>
               </label>
             </div>
-            <p class="muted">FTP and weight make the pacing and duration model more specific. Carb, bottle, and caffeine fields shape the race-day logistics rather than the route analysis itself.</p>
+            <p class="muted">FTP and weight make the pacing and duration model more specific. Recent volume, goal, and technical confidence tune the tactical advice so the plan behaves more like a real coaching brief.</p>
           </div>
 
           <div class="control-step control-actions">

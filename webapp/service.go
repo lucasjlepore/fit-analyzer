@@ -43,6 +43,13 @@ type RacePlanOptions struct {
 	BottleML        float64
 	StartBottles    int
 	CaffeineMgPerKG float64
+	Goal            string
+	RiderType       string
+	WeeklyHours     float64
+	WeeklyKM        float64
+	LongestRideKM   float64
+	TeamSupport     string
+	TechnicalSkill  string
 	StrategyMode    string
 }
 
@@ -105,6 +112,13 @@ func PlanRaceBytes(opts RacePlanOptions) (*RacePlanResult, error) {
 		BottleML:        opts.BottleML,
 		StartBottles:    opts.StartBottles,
 		CaffeineMgPerKG: opts.CaffeineMgPerKG,
+		Goal:            opts.Goal,
+		RiderType:       opts.RiderType,
+		WeeklyHours:     opts.WeeklyHours,
+		WeeklyKM:        opts.WeeklyKM,
+		LongestRideKM:   opts.LongestRideKM,
+		TeamSupport:     opts.TeamSupport,
+		TechnicalSkill:  opts.TechnicalSkill,
 		StrategyMode:    opts.StrategyMode,
 	})
 	if err != nil {

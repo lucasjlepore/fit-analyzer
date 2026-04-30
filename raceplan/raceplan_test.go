@@ -20,6 +20,12 @@ func TestPlanBytesBuildsRacePlanFromCourseFIT(t *testing.T) {
 		BottleML:        750,
 		StartBottles:    2,
 		CaffeineMgPerKG: 3,
+		Goal:            "podium",
+		RiderType:       "puncheur",
+		WeeklyHours:     6.5,
+		WeeklyKM:        150,
+		LongestRideKM:   9,
+		TechnicalSkill:  "low",
 		StrategyMode:    "balanced",
 	})
 	if err != nil {
@@ -44,6 +50,15 @@ func TestPlanBytesBuildsRacePlanFromCourseFIT(t *testing.T) {
 	if len(plan.Strategy) == 0 {
 		t.Fatal("expected tactical strategy sections")
 	}
+	if plan.RiderType != "puncheur" {
+		t.Fatalf("expected explicit rider type to be preserved, got %q", plan.RiderType)
+	}
+	if len(plan.Warnings) == 0 {
+		t.Fatal("expected warnings")
+	}
+	if !strings.Contains(strings.Join(plan.Warnings, " "), "longest recent ride") {
+		t.Fatalf("expected durability warning, got %v", plan.Warnings)
+	}
 
 	md := BuildMarkdown(plan)
 	if !strings.Contains(md, "# Race Plan") {
@@ -51,6 +66,9 @@ func TestPlanBytesBuildsRacePlanFromCourseFIT(t *testing.T) {
 	}
 	if !strings.Contains(md, "Key Climbs") {
 		t.Fatalf("markdown missing climbs section: %q", md)
+	}
+	if !strings.Contains(md, "Goal: Podium") {
+		t.Fatalf("markdown missing goal context: %q", md)
 	}
 }
 

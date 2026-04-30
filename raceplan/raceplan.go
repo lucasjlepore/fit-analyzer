@@ -37,6 +37,13 @@ type Profile struct {
 	BottleML        float64 `json:"bottle_ml,omitempty"`
 	StartBottles    int     `json:"start_bottles,omitempty"`
 	CaffeineMgPerKG float64 `json:"caffeine_mg_per_kg,omitempty"`
+	Goal            string  `json:"goal,omitempty"`
+	RiderType       string  `json:"rider_type,omitempty"`
+	WeeklyHours     float64 `json:"weekly_hours,omitempty"`
+	WeeklyKM        float64 `json:"weekly_km,omitempty"`
+	LongestRideKM   float64 `json:"longest_recent_ride_km,omitempty"`
+	TeamSupport     string  `json:"team_support,omitempty"`
+	TechnicalSkill  string  `json:"technical_confidence,omitempty"`
 	StrategyMode    string  `json:"strategy_mode,omitempty"`
 }
 
@@ -72,6 +79,13 @@ type ProfileSummary struct {
 	BottleML        float64 `json:"bottle_ml,omitempty"`
 	StartBottles    int     `json:"start_bottles,omitempty"`
 	CaffeineMgPerKG float64 `json:"caffeine_mg_per_kg,omitempty"`
+	Goal            string  `json:"goal,omitempty"`
+	RiderType       string  `json:"rider_type,omitempty"`
+	WeeklyHours     float64 `json:"weekly_hours,omitempty"`
+	WeeklyKM        float64 `json:"weekly_km,omitempty"`
+	LongestRideKM   float64 `json:"longest_recent_ride_km,omitempty"`
+	TeamSupport     string  `json:"team_support,omitempty"`
+	TechnicalSkill  string  `json:"technical_confidence,omitempty"`
 	StrategyMode    string  `json:"strategy_mode"`
 }
 
@@ -220,7 +234,7 @@ func PlanBytes(sourceName string, data []byte, profile Profile) (*Plan, error) {
 		DecisiveSectors:          decisiveSectors,
 		FuelPlan:                 fuelPlan,
 		Strategy:                 strategy,
-		Warnings:                 buildWarnings(src, profile, climbs),
+		Warnings:                 buildWarnings(src, profile, climbs, pressurePoints, totalDistance),
 	}
 	return plan, nil
 }
@@ -242,6 +256,18 @@ func BuildMarkdown(plan *Plan) string {
 	fmt.Fprintf(&b, "- Estimated duration: %s (range %s-%s)\n", formatDuration(plan.EstimatedDurationSeconds), formatDuration(plan.EstimatedDurationLowS), formatDuration(plan.EstimatedDurationHighS))
 	fmt.Fprintf(&b, "- Estimated average speed: %.1f km/h\n", plan.EstimatedAverageSpeedKPH)
 	fmt.Fprintf(&b, "- Rider type: %s\n", cleanLabel(plan.RiderType))
+	if plan.Profile.Goal != "" {
+		fmt.Fprintf(&b, "- Goal: %s\n", cleanLabel(plan.Profile.Goal))
+	}
+	if label := recentVolumeLabel(plan.Profile.WeeklyHours, plan.Profile.WeeklyKM); label != "" {
+		fmt.Fprintf(&b, "- Recent volume: %s\n", label)
+	}
+	if plan.Profile.LongestRideKM > 0 {
+		fmt.Fprintf(&b, "- Longest recent ride: %.0f km\n", plan.Profile.LongestRideKM)
+	}
+	if plan.Profile.TeamSupport != "" {
+		fmt.Fprintf(&b, "- Team support: %s\n", cleanLabel(plan.Profile.TeamSupport))
+	}
 
 	b.WriteString("\n## Fueling\n")
 	fmt.Fprintf(&b, "- Carb target: %.0f g/h\n", plan.FuelPlan.CarbTargetGPerHour)
@@ -910,6 +936,12 @@ func buildStrategy(profile Profile, src *routeSource, climbs []Climb, pressure [
 		fmt.Sprintf("Start taking in carbohydrate by %s, which is roughly km %.1f on this route.", formatDuration(fuel.StartFuelBySeconds), fuel.StartFuelByDistanceKM),
 		fmt.Sprintf("Target about %.0f g carbohydrate and %.0f mL fluid per hour. Build that into bottles and pockets before the start.", fuel.CarbTargetGPerHour, fuel.FluidTargetMLPerHour),
 	}
+	if goal := goalGuidance(profile.Goal); goal != "" {
+		preRaceItems = append(preRaceItems, goal)
+	}
+	if context := trainingContext(profile, totalKM); context != "" {
+		preRaceItems = append(preRaceItems, context)
+	}
 	if fuel.CaffeinePlan != "" {
 		preRaceItems = append(preRaceItems, fuel.CaffeinePlan)
 	}
@@ -927,8 +959,14 @@ func buildStrategy(profile Profile, src *routeSource, climbs []Climb, pressure [
 	openingItems := []string{
 		"Ride the opening phase sheltered. Do not spend matches taking pointless pulls before the first real pressure point.",
 	}
+	if teamNote := teamGuidance(profile.TeamSupport, "opening"); teamNote != "" {
+		openingItems = append(openingItems, teamNote)
+	}
 	if firstPressure := firstByDistance(pressure, 0, totalKM*0.5); firstPressure != nil {
 		openingItems = append(openingItems, fmt.Sprintf("Prioritize position before km %.1f because %s is the first place the bunch can string out.", firstPressure.DistanceKM, strings.ToLower(firstPressure.Title)))
+	}
+	if technical := technicalGuidance(profile.TechnicalSkill, pressure); technical != "" {
+		openingItems = append(openingItems, technical)
 	}
 	openingItems = append(openingItems, pacingGuidance(profile, "opening"))
 	sections = append(sections, StrategySection{Title: "Opening third", Items: dedupeStrings(openingItems)})
@@ -936,6 +974,9 @@ func buildStrategy(profile Profile, src *routeSource, climbs []Climb, pressure [
 	midItems := []string{
 		"Use the middle of the race to keep feeding and protect front-half position before climbs, hazards, and any marked feed opportunity.",
 		pacingGuidance(profile, "middle"),
+	}
+	if teamNote := teamGuidance(profile.TeamSupport, "middle"); teamNote != "" {
+		midItems = append(midItems, teamNote)
 	}
 	if len(climbs) > 0 {
 		midItems = append(midItems, fmt.Sprintf("This course has %d notable climb(s). Treat each entry as a positioning battle before it becomes a power battle.", len(climbs)))
@@ -947,6 +988,12 @@ func buildStrategy(profile Profile, src *routeSource, climbs []Climb, pressure [
 
 	finaleItems := []string{
 		fmt.Sprintf("Your rider profile reads as %s, so the finale should be shaped around selective terrain instead of random flat-road hero moves.", cleanLabel(riderType)),
+	}
+	if finaleGoal := finaleGuidance(profile.Goal); finaleGoal != "" {
+		finaleItems = append(finaleItems, finaleGoal)
+	}
+	if teamNote := teamGuidance(profile.TeamSupport, "finale"); teamNote != "" {
+		finaleItems = append(finaleItems, teamNote)
 	}
 	for _, sector := range decisive {
 		finaleItems = append(finaleItems, fmt.Sprintf("%s: %s", sector.Title, sector.RecommendedAction))
@@ -1001,13 +1048,135 @@ func pacingGuidance(profile Profile, phase string) string {
 	)
 }
 
-func buildWarnings(src *routeSource, profile Profile, climbs []Climb) []string {
+func goalGuidance(goal string) string {
+	switch goal {
+	case "finish":
+		return "The stated goal is to finish well, so the first rule is simple: skip ego moves early and arrive at the final third properly fueled."
+	case "lead_group":
+		return "The goal is to make the lead group. Treat every marked pressure point as a position-before, not a chase-after, moment."
+	case "top_10":
+		return "A top-10 ride usually comes from conserving well enough to start the final quarter in the front group with something left."
+	case "podium":
+		return "A podium goal requires selective aggression, not constant aggression. Save your real efforts for terrain that can actually reduce the group."
+	case "win":
+		return "A win target means the plan should bias toward winning terrain rather than survival. Protect matches until the decisive sector, then commit."
+	case "support_teammate":
+		return "Supporting a teammate changes the script: spend your early matches on positioning and cover, not on protecting your own finish."
+	default:
+		return ""
+	}
+}
+
+func finaleGuidance(goal string) string {
+	switch goal {
+	case "finish":
+		return "If the race detonates, switch to damage control quickly: ride your own steady effort on the climbs and keep the fueling pattern intact."
+	case "lead_group":
+		return "The finale success metric is simple: arrive in the first selection. Do not gamble on speculative late attacks if they risk missing the decisive split."
+	case "top_10":
+		return "Do not launch first unless the terrain obviously suits you. A measured last-kilometer effort is usually worth more than a heroic long-range move."
+	case "podium", "win":
+		return "Once the decisive move goes, commit fully. Half-following a winning move is often worse than missing it and resetting for the next acceleration."
+	case "support_teammate":
+		return "By the finale, your value is in keeping your teammate out of the wind and closing dangerous counters before they become race-defining."
+	default:
+		return ""
+	}
+}
+
+func trainingContext(profile Profile, totalKM float64) string {
+	parts := make([]string, 0, 3)
+	if volume := recentVolumeLabel(profile.WeeklyHours, profile.WeeklyKM); volume != "" {
+		parts = append(parts, fmt.Sprintf("Recent volume is about %s.", volume))
+	}
+	if profile.LongestRideKM > 0 {
+		parts = append(parts, fmt.Sprintf("Your longest recent ride is %.0f km.", profile.LongestRideKM))
+		switch {
+		case totalKM > profile.LongestRideKM*1.15:
+			parts = append(parts, "That makes this race a durability test, so the opening phase should feel almost boring.")
+		case totalKM <= profile.LongestRideKM*0.9:
+			parts = append(parts, "The route is inside familiar durability territory if you stay disciplined.")
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func teamGuidance(teamSupport, phase string) string {
+	switch teamSupport {
+	case "solo":
+		if phase == "opening" {
+			return "You are racing solo, so avoid volunteering for chase work while teams still have helpers to burn."
+		}
+		if phase == "finale" {
+			return "Racing solo means your currency is positioning and patience. Let organized teams expose themselves before you do."
+		}
+		return ""
+	case "teammates":
+		switch phase {
+		case "opening":
+			return "If you have teammates, use them to keep you near the front before the first key squeeze point instead of burning your own matches."
+		case "middle":
+			return "Have teammates handle low-value bottle runs or dead-road cover so your better efforts are reserved for the decisive sectors."
+		case "finale":
+			return "Use teammates before the winning move, not after it. One rider should launch the setup, and the protected rider should answer the real move."
+		}
+	}
+	return ""
+}
+
+func technicalGuidance(skill string, pressure []PressurePoint) string {
+	if !hasPressureCategory(pressure, "technical") {
+		return ""
+	}
+	switch skill {
+	case "low":
+		return "Technical confidence is marked low. Move up before corners and narrowings, then ride them cleanly; do not try to gain positions inside them."
+	case "high":
+		return "Technical confidence is a strength. Use clean setup and exits through the marked technical sectors to move up without resorting to full-gas surges."
+	default:
+		return ""
+	}
+}
+
+func hasPressureCategory(points []PressurePoint, category string) bool {
+	for _, point := range points {
+		if point.Category == category {
+			return true
+		}
+	}
+	return false
+}
+
+func recentVolumeLabel(hours, km float64) string {
+	switch {
+	case hours > 0 && km > 0:
+		return fmt.Sprintf("%.1f h/week | %.0f km/week", hours, km)
+	case hours > 0:
+		return fmt.Sprintf("%.1f h/week", hours)
+	case km > 0:
+		return fmt.Sprintf("%.0f km/week", km)
+	default:
+		return ""
+	}
+}
+
+func buildWarnings(src *routeSource, profile Profile, climbs []Climb, pressure []PressurePoint, totalDistanceM float64) []string {
 	warnings := make([]string, 0, 4)
+	totalKM := totalDistanceM / 1000
 	if src.sourceType == "activity" {
 		warnings = append(warnings, "Route plan was built from an activity FIT, not a dedicated course FIT. That is fine, but explicit course-point metadata may be missing.")
 	}
 	if profile.FTPWatts <= 0 || profile.WeightKG <= 0 {
 		warnings = append(warnings, "Estimated duration and pacing guidance are less specific without both FTP and weight.")
+	}
+	if profile.LongestRideKM > 0 && totalKM > profile.LongestRideKM*1.15 {
+		warnings = append(warnings, fmt.Sprintf("Course distance is meaningfully longer than your longest recent ride (%.0f km course vs %.0f km recent long ride). Respect durability and fuel early.", totalKM, profile.LongestRideKM))
+	}
+	if profile.WeeklyKM > 0 && totalKM > profile.WeeklyKM*0.7 {
+		warnings = append(warnings, fmt.Sprintf("This route is a large fraction of your current weekly volume (%.0f km course vs %.0f km/week). Ride the opening phase conservatively.", totalKM, profile.WeeklyKM))
+	}
+	if profile.TechnicalSkill == "low" && hasPressureCategory(pressure, "technical") {
+		warnings = append(warnings, "Technical confidence is marked low, so the biggest time losses will likely come from poor setup before corners and narrowings rather than from raw climbing power.")
 	}
 	if len(climbs) == 0 {
 		warnings = append(warnings, "No major climbs were detected from the route profile; decisive windows will bias toward late technical sectors instead.")
@@ -1024,6 +1193,13 @@ func summarizeProfile(profile Profile) ProfileSummary {
 		BottleML:        round(profile.BottleML, 0),
 		StartBottles:    profile.StartBottles,
 		CaffeineMgPerKG: round(profile.CaffeineMgPerKG, 1),
+		Goal:            profile.Goal,
+		RiderType:       profile.RiderType,
+		WeeklyHours:     round(profile.WeeklyHours, 1),
+		WeeklyKM:        round(profile.WeeklyKM, 1),
+		LongestRideKM:   round(profile.LongestRideKM, 1),
+		TeamSupport:     profile.TeamSupport,
+		TechnicalSkill:  profile.TechnicalSkill,
 		StrategyMode:    profile.StrategyMode,
 	}
 	if profile.FTPWatts > 0 && profile.WeightKG > 0 {
@@ -1038,8 +1214,35 @@ func normalizeProfile(profile Profile) Profile {
 	profile.MaxCarbGPerHour = safePositive(profile.MaxCarbGPerHour)
 	profile.BottleML = safePositive(profile.BottleML)
 	profile.CaffeineMgPerKG = safePositive(profile.CaffeineMgPerKG)
+	profile.WeeklyHours = safePositive(profile.WeeklyHours)
+	profile.WeeklyKM = safePositive(profile.WeeklyKM)
+	profile.LongestRideKM = safePositive(profile.LongestRideKM)
 	if profile.StartBottles < 0 {
 		profile.StartBottles = 0
+	}
+	switch strings.ToLower(strings.TrimSpace(profile.Goal)) {
+	case "finish", "lead_group", "top_10", "podium", "win", "support_teammate":
+		profile.Goal = strings.ToLower(strings.TrimSpace(profile.Goal))
+	default:
+		profile.Goal = ""
+	}
+	switch strings.ToLower(strings.TrimSpace(profile.RiderType)) {
+	case "climber", "puncheur", "all_rounder", "diesel_rouleur", "steady_endurance_rider", "sprinter":
+		profile.RiderType = strings.ToLower(strings.TrimSpace(profile.RiderType))
+	default:
+		profile.RiderType = ""
+	}
+	switch strings.ToLower(strings.TrimSpace(profile.TeamSupport)) {
+	case "solo", "teammates":
+		profile.TeamSupport = strings.ToLower(strings.TrimSpace(profile.TeamSupport))
+	default:
+		profile.TeamSupport = ""
+	}
+	switch strings.ToLower(strings.TrimSpace(profile.TechnicalSkill)) {
+	case "low", "medium", "high":
+		profile.TechnicalSkill = strings.ToLower(strings.TrimSpace(profile.TechnicalSkill))
+	default:
+		profile.TechnicalSkill = ""
 	}
 	switch strings.ToLower(strings.TrimSpace(profile.StrategyMode)) {
 	case "conservative", "aggressive":
@@ -1051,6 +1254,9 @@ func normalizeProfile(profile Profile) Profile {
 }
 
 func inferRiderType(profile Profile) string {
+	if profile.RiderType != "" {
+		return profile.RiderType
+	}
 	if profile.FTPWatts <= 0 || profile.WeightKG <= 0 {
 		if profile.FTPWatts > 300 {
 			return "diesel_rouleur"
